@@ -546,14 +546,12 @@ async def _fetch_missing_covers(recs: list[tuple[int, str, str]]):
 
 @app.post("/sync")
 def trigger_sync(background_tasks: BackgroundTasks, request: Request):
-    global _sync_running
-    if not _sync_lock.acquire(blocking=False):
+    profile_id = get_profile_id(request)
+    if _sync_running:
         if request.headers.get("HX-Request"):
             return HTMLResponse('<span class="sync-status running">Already running…</span>')
         return RedirectResponse("/", status_code=303)
-    _sync_running = True  # set eagerly so panel sees it immediately
-    _sync_lock.release()  # _run_sync will re-acquire
-    background_tasks.add_task(_run_sync)
+    background_tasks.add_task(_run_sync, profile_id)
     if request.headers.get("HX-Request"):
         return HTMLResponse('<span class="sync-status running">Sync started…</span>')
     return RedirectResponse("/", status_code=303)
