@@ -67,37 +67,26 @@ Syncs your reading history from [Hardcover](https://hardcover.app), cross-refere
 
 ```bash
 # 1. Clone
-git clone https://github.com/your-username/bookclub.git
+git clone https://github.com/nickwolf/bookclub.git
 cd bookclub
 
-# 2. Create the named Docker volume for the database
-docker volume create bookclub_data
-
-# 3. Configure environment
+# 2. Configure environment
 cp .env.example .env
 # Edit .env — at minimum set HARDCOVER_TOKEN and ANTHROPIC_API_KEY
 
-# 4. Build and start
+# 3. Build and start
 docker compose up -d --build
 
-# 5. Open http://localhost:8585
+# 4. Open http://localhost:8585
 ```
 
 Then click **⟳ Sync** to pull in your Hardcover data, and **↺ Recs** to generate your first AI recommendations.
 
 ### With Audiobookshelf
 
-If you're running Audiobookshelf via Docker, share its config volume with Bookclub:
+Set `ABS_URL` and `ABS_TOKEN` in `.env`. Then edit the `audiobookshelf_config` volume in `docker-compose.yml` to point at your existing ABS volume (instructions are in the comments at the bottom of the file). Make sure the volume name matches what your ABS container uses.
 
-```yaml
-# In your bookclub docker-compose.yml, the audiobookshelf_config volume is already wired in.
-# Make sure the volume name matches what your ABS container uses.
-volumes:
-  audiobookshelf_config:
-    external: true
-```
-
-For ABS to reach Bookclub's container from inside Docker, use your Docker bridge gateway IP as `ABS_URL` (not `localhost`) — see the [ops runbook](docs/ops-runbook.md) for details.
+For the `ABS_URL`, use your Docker bridge gateway IP (e.g. `http://192.168.x.x:13378`), not `localhost` — containers can't reach each other via localhost. See the [ops runbook](docs/ops-runbook.md) for details.
 
 ---
 
