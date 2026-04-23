@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Recommendations · Bookclub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Recommendations</h1>
+  <p class="subtitle">{{ stats.total_recs }} total · {{ stats.queued }} queued · {{ stats.in_library }} in ABS library</p>
+</div>
+
+{% set tab_counts = {
+  "all":        stats.pending,
+  "pending":    stats.pending,
+  "queued":     stats.queued,
+  "in_library": stats.in_library_pending,
+  "archive":    stats.read + stats.passed
+} %}
+
+<form class="rec-search-form" method="get" action="/">
+  <input type="hidden" name="status" value="{{ current_status }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search title, author, series…" class="rec-search-input">
+  {% if q %}<a href="/?status={{ current_status }}" class="btn btn-pass rec-search-clear">✕</a>{% endif %}
+</form>
+
+<div class="filter-tabs">
+  {% for key, label in status_labels.items() %}
+    <a href="/?status={{ key }}{% if q %}&q={{ q }}{% endif %}"
+       class="filter-tab {% if current_status == key %}active{% endif %}">
+      {{ label }}{% if tab_counts[key] and not q %} <span class="tab-count">{{ tab_counts[key] }}</span>{% endif %}
+    </a>
+  {% endfor %}
+</div>
+
+<div class="rec-grid">
+  {% for rec in recs %}
+    {% include "partials/rec_card.html" %}
+  {% else %}
+    <p class="empty">No recommendations in this view.</p>
+  {% endfor %}
+</div>
+
+{% endblock %}

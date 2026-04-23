@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Rate · Bookclub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Rating Queue</h1>
+  <p class="subtitle">Rate what you've read — better ratings mean better recommendations</p>
+</div>
+
+{% if unrated_recs %}
+<section class="rate-section">
+  <h2 class="rate-section-title">Recommendations you've read <span class="tab-count">{{ unrated_recs | length }}</span></h2>
+  <div class="rate-list">
+    {% for rec in unrated_recs %}
+    <div class="rate-item" id="rec-rate-{{ rec.id }}">
+      <div class="rate-item-info">
+        <strong>{{ rec.title }}</strong>
+        <span>{{ rec.author or "" }}</span>
+        {% if rec.series %}<span class="rate-series">{{ rec.series }}</span>{% endif %}
+      </div>
+      <form class="rate-stars-form"
+            hx-post="/rec/{{ rec.id }}/rate"
+            hx-target="#rec-rate-{{ rec.id }}"
+            hx-swap="outerHTML">
+        <input type="hidden" name="source" value="queue">
+        {% for i in range(1, 6) %}
+          <button type="submit" name="rating" value="{{ i }}" class="star-btn">{{ i }}★</button>
+        {% endfor %}
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="rate-section">
+  <h2 class="rate-section-title">
+    Hardcover history to rate
+    <span class="tab-count">{{ unrated_hc | length }}</span>
+    <span class="rate-section-hint">ratings improve AI recommendations</span>
+  </h2>
+  {% if unrated_hc %}
+  <div class="rate-grid">
+    {% for book in unrated_hc %}
+    <div class="rate-hc-item" id="hc-{{ book.id }}">
+      {% if book.cover_url %}
+        <img class="rate-hc-cover" src="{{ book.cover_url }}" alt="" loading="lazy">
+      {% else %}
+        <div class="rate-hc-cover cover-placeholder">📖</div>
+      {% endif %}
+      <div class="rate-hc-info">
+        <strong>{{ book.title }}</strong>
+        {% if book.author %}<span>{{ book.author }}</span>{% endif %}
+        {% if book.series %}<span class="rate-series">{{ book.series }}</span>{% endif %}
+      </div>
+      <form class="rate-stars-form"
+            hx-post="/hc/{{ book.id }}/rate"
+            hx-target="#hc-{{ book.id }}"
+            hx-swap="outerHTML">
+        {% for i in range(1, 6) %}
+          <button type="submit" name="rating" value="{{ i }}" class="star-btn">{{ i }}★</button>
+        {% endfor %}
+        <button type="submit" name="rating" value="0" class="btn-skip">skip</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">All Hardcover books are rated — great signal for recommendations!</p>
+  {% endif %}
+</section>
+
+{% endblock %}

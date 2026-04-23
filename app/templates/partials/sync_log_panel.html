@@ -1,0 +1,24 @@
+<div id="sync-panel-body"
+     class="sync-panel-body"
+     {% if running %}
+     hx-get="/sync/log-panel"
+     hx-trigger="every 2s"
+     hx-target="#sync-panel-body"
+     hx-swap="outerHTML"
+     {% endif %}>
+  {% for entry in entries %}
+  <div class="sync-log-entry log-{{ entry.level }}">
+    <span class="sync-log-time">{{ entry.created_at[11:19] }}</span>
+    <span class="sync-log-comp">{{ entry.component }}</span>
+    <span class="sync-log-msg">{{ entry.message }}</span>
+    {% if entry.detail %}<div class="sync-log-detail">{{ entry.detail }}</div>{% endif %}
+  </div>
+  {% endfor %}
+  {% if running %}
+    <div class="sync-log-entry log-running">
+      <span class="sync-log-spinner">⟳</span> Syncing…
+    </div>
+  {% elif not entries %}
+    <div class="sync-log-empty">No log entries yet.</div>
+  {% endif %}
+</div>

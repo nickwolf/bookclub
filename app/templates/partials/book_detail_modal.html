@@ -1,0 +1,72 @@
+<div class="modal-overlay" onclick="if(event.target===this)document.getElementById('modal').innerHTML=''">
+  <div class="modal-box">
+    <button class="modal-close" onclick="document.getElementById('modal').innerHTML=''">✕</button>
+
+    <div class="modal-layout">
+
+      <div class="modal-cover">
+        {% if rec.cover_url %}
+          <img src="{{ rec.cover_url }}" alt="">
+        {% else %}
+          <span class="modal-cover-placeholder">📖</span>
+        {% endif %}
+      </div>
+
+      <div class="modal-body">
+        <h2 class="modal-title">{{ rec.title }}</h2>
+        <div class="modal-author">{{ rec.author or "Unknown author" }}</div>
+
+        <div class="modal-badges">
+          {% if rec.series %}
+            <span class="badge type-badge">
+              {{ rec.series }}{% if rec.abs_series_seq %} #{{ rec.abs_series_seq }}{% endif %}
+            </span>
+          {% endif %}
+          {% if rec.abs_duration %}
+            {% set h = (rec.abs_duration / 3600) | int %}
+            {% set m = ((rec.abs_duration % 3600) / 60) | int %}
+            <span class="badge">⏱ {{ h }}h{% if m %} {{ m }}m{% endif %}</span>
+          {% endif %}
+          {% if rec.abs_narrator %}
+            <span class="badge">🎙 {{ rec.abs_narrator }}</span>
+          {% endif %}
+          {% if rec.in_abs_library %}
+            <span class="badge in-lib">In Library</span>
+          {% endif %}
+          {% if rec.abs_finished %}
+            <span class="badge finished">Listened</span>
+          {% elif rec.abs_progress and rec.abs_progress > 0.05 %}
+            <span class="badge in-progress">{{ (rec.abs_progress * 100) | int }}% listened</span>
+          {% endif %}
+          {% if rec.audiobook_available == "Yes" %}
+            <span class="badge audio-yes">🎧 Audio</span>
+          {% endif %}
+          {% if rec.on_want_to_read %}
+            <span class="badge wtr-badge">🔖 Want to Read</span>
+          {% endif %}
+        </div>
+
+        {% if rec.abs_genres %}
+          <div class="modal-genres">
+            {% for g in rec.abs_genres.split(', ') %}
+              <span class="rec-tag">{{ g }}</span>
+            {% endfor %}
+          </div>
+        {% elif rec.tags %}
+          <div class="modal-genres">
+            {% for t in rec.tags.split(', ') %}
+              <span class="rec-tag">{{ t }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {% if rec.abs_description %}
+          <div class="modal-description">{{ rec.abs_description | safe }}</div>
+        {% elif rec.reason %}
+          <div class="modal-description"><p>{{ rec.reason }}</p></div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</div>

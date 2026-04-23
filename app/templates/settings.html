@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Settings · Bookclub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Settings</h1>
+</div>
+
+<div class="settings-grid">
+
+  <!-- Sync history -->
+  <section class="settings-card">
+    <h2>Sync history</h2>
+    {% if sync_history %}
+    <table class="log-table">
+      <thead>
+        <tr><th>Time</th><th>HC</th><th>ABS</th><th>Status</th><th>Message</th></tr>
+      </thead>
+      <tbody>
+        {% for s in sync_history %}
+        <tr class="log-row-{{ s.status }}">
+          <td class="log-time">{{ s.started_at[:16] | replace("T"," ") }}</td>
+          <td>{{ s.hc_synced }}</td>
+          <td>{{ s.abs_synced }}</td>
+          <td><span class="log-badge log-{{ s.status }}">{{ s.status }}</span></td>
+          <td class="log-detail">{{ s.message or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No syncs recorded yet.</p>
+    {% endif %}
+  </section>
+
+  <!-- App log -->
+  <section class="settings-card">
+    <div class="settings-card-header">
+      <h2>Application log</h2>
+      <button class="btn btn-pass"
+              hx-post="/settings/log/clear"
+              hx-target="#app-log-body"
+              hx-swap="innerHTML"
+              hx-confirm="Clear all log entries?">Clear</button>
+    </div>
+    <table class="log-table">
+      <thead>
+        <tr><th>Time</th><th>Component</th><th>Level</th><th>Message</th></tr>
+      </thead>
+      <tbody id="app-log-body">
+        {% if app_log %}
+          {% for entry in app_log %}
+          <tr>
+            <td class="log-time">{{ entry.created_at[:16] | replace("T"," ") }}</td>
+            <td><span class="log-component">{{ entry.component }}</span></td>
+            <td><span class="log-badge log-{{ entry.level }}">{{ entry.level }}</span></td>
+            <td class="log-msg">
+              {{ entry.message }}
+              {% if entry.detail %}
+                <div class="log-detail-text">{{ entry.detail }}</div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="4" class="empty">No log entries yet.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+{% endblock %}

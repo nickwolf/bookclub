@@ -1,0 +1,122 @@
+{% set status = rec.user_status %}
+<div class="rec-card status-{{ status }}" id="rec-{{ rec.id }}">
+
+  <div class="rec-cover">
+    {% if rec.cover_url %}
+      <img src="{{ rec.cover_url }}" alt="" loading="lazy">
+    {% else %}
+      <span class="rec-cover-placeholder">📖</span>
+    {% endif %}
+  </div>
+
+  <div class="rec-body">
+    <div>
+      <h3 class="rec-title">{{ rec.title }}</h3>
+      <div class="rec-meta">
+        <span class="rec-author">{{ rec.author or "Unknown" }}</span>
+        {% if rec.series %}<span class="rec-series">· {{ rec.series }}</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="rec-badges">
+      <span class="badge type-badge">{{ rec.type }}</span>
+      {% if rec.confidence %}
+        <span class="badge confidence-badge" title="AI confidence score">{{ rec.confidence }}% match</span>
+      {% endif %}
+      {% if rec.on_want_to_read %}
+        <span class="badge wtr-badge" title="Already on your Hardcover Want-to-Read list">🔖 Want to Read</span>
+      {% endif %}
+      {% if rec.in_abs_library %}
+        <span class="badge in-lib">In Library</span>
+      {% endif %}
+      {% if rec.abs_finished %}
+        <span class="badge finished">Listened</span>
+      {% elif rec.abs_progress and rec.abs_progress > 0.05 %}
+        <span class="badge in-progress">{{ (rec.abs_progress * 100) | int }}%</span>
+      {% endif %}
+      {% if rec.audiobook_available == "Yes" %}
+        <span class="badge audio-yes">🎧 Audio</span>
+      {% elif rec.audiobook_available == "Partial" %}
+        <span class="badge audio-partial">🎧 Partial</span>
+      {% endif %}
+    </div>
+
+    {% if rec.tags %}
+    <div class="rec-tags">
+      {% for tag in rec.tags.split(', ') %}
+        <span class="rec-tag">{{ tag }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if rec.reason %}
+    <p class="rec-reason">{{ rec.reason }}</p>
+    {% endif %}
+
+    <div class="rec-actions">
+      {% if status == "pending" %}
+        <button class="btn btn-queue"
+                hx-post="/rec/{{ rec.id }}/queue"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">+ Queue</button>
+        <button class="btn btn-pass"
+                hx-post="/rec/{{ rec.id }}/pass"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">Pass</button>
+        <button class="btn btn-read"
+                hx-post="/rec/{{ rec.id }}/read"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">Already Read</button>
+
+      {% elif status == "queued" %}
+        <span class="status-label queued">📋 Queued #{{ rec.queue_pos }}</span>
+        <button class="btn btn-read"
+                hx-post="/rec/{{ rec.id }}/read"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">Mark Read</button>
+        <button class="btn btn-pass"
+                hx-post="/rec/{{ rec.id }}/pass"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">Remove</button>
+
+      {% elif status == "pass" %}
+        <span class="status-label pass">✗ Passed</span>
+        <button class="btn btn-unpass"
+                hx-post="/rec/{{ rec.id }}/unpass"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">Undo</button>
+
+      {% elif status == "read" %}
+        <span class="status-label read">✓ Read</span>
+        <form hx-post="/rec/{{ rec.id }}/rate"
+              hx-target="#rec-{{ rec.id }}"
+              hx-swap="outerHTML"
+              class="rate-form">
+          {% for i in range(1, 6) %}
+            <button type="submit" name="rating" value="{{ i }}"
+                    class="star-btn{% if rec.user_rating and i <= rec.user_rating %} star-filled{% endif %}">★</button>
+          {% endfor %}
+        </form>
+        <button class="btn btn-pass"
+                hx-post="/rec/{{ rec.id }}/unread"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">Undo</button>
+      {% endif %}
+    </div>
+
+    {% if status != "pending" %}
+    <form class="rec-notes-form"
+          hx-post="/rec/{{ rec.id }}/note"
+          hx-target="#note-status-{{ rec.id }}"
+          hx-swap="innerHTML"
+          hx-trigger="blur from:find textarea">
+      <textarea name="notes"
+                class="rec-notes-input"
+                placeholder="Notes for AI context (why you passed, what you liked, etc.)…"
+                rows="2">{{ rec.user_notes or "" }}</textarea>
+      <span id="note-status-{{ rec.id }}" class="note-status"></span>
+    </form>
+    {% endif %}
+  </div>
+
+</div>

@@ -1,0 +1,109 @@
+<ol class="queue-list" id="queue-sortable">
+  {% for item in items %}
+  {% set is_read = item.user_status == 'read' %}
+  <li class="queue-item{% if is_read %} queue-item-read{% endif %}"
+      data-rec-id="{{ item.rec_id }}" data-queue-id="{{ item.id }}">
+
+    <span class="drag-handle">⠿</span>
+
+    <div class="queue-cover"
+         hx-get="/rec/{{ item.rec_id }}/detail"
+         hx-target="#modal"
+         hx-swap="innerHTML"
+         style="cursor:pointer"
+         title="View details">
+      {% if item.abs_library_item_id %}
+        <img src="/abs/cover/{{ item.abs_library_item_id }}" alt="" loading="lazy">
+      {% elif item.cover_url %}
+        <img src="{{ item.cover_url }}" alt="" loading="lazy">
+      {% else %}
+        <div class="cover-placeholder">📖</div>
+      {% endif %}
+    </div>
+
+    <div class="queue-info">
+      <strong class="queue-title"
+              hx-get="/rec/{{ item.rec_id }}/detail"
+              hx-target="#modal"
+              hx-swap="innerHTML"
+              style="cursor:pointer">{{ item.title }}</strong>
+      <span class="queue-author">{{ item.author or "" }}</span>
+
+      <div class="queue-badges">
+        {% if item.series %}
+          <span class="badge type-badge">
+            {{ item.series }}{% if item.abs_series_seq %} #{{ item.abs_series_seq }}{% endif %}
+          </span>
+        {% endif %}
+        {% if item.abs_duration %}
+          {% set h = (item.abs_duration / 3600) | int %}
+          {% set m = ((item.abs_duration % 3600) / 60) | int %}
+          <span class="badge">⏱ {{ h }}h{% if m %} {{ m }}m{% endif %}</span>
+        {% endif %}
+        {% if item.abs_narrator %}
+          <span class="badge">🎙 {{ item.abs_narrator }}</span>
+        {% endif %}
+        {% if item.in_abs_library %}<span class="badge in-lib">In Library</span>{% endif %}
+        {% if item.abs_finished %}
+          <span class="badge finished">Listened</span>
+        {% endif %}
+      </div>
+
+      {% if item.abs_genres %}
+        <div class="queue-genres">
+          {% for g in item.abs_genres.split(', ')[:3] %}
+            <span class="rec-tag">{{ g }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="queue-controls">
+      {% if not is_read %}
+        <form hx-post="/rec/{{ item.rec_id }}/read"
+              hx-target="#queue-list-container"
+              hx-swap="innerHTML">
+          <input type="hidden" name="source" value="queue">
+          <button type="submit" class="btn btn-read queue-action-btn" title="Mark as read">✓ Read</button>
+        </form>
+      {% else %}
+        {% if item.user_rating %}
+          <span class="stars queue-stars">{{ "★" * item.user_rating }}{{ "☆" * (5 - item.user_rating) }}</span>
+        {% else %}
+          <form hx-post="/rec/{{ item.rec_id }}/rate"
+                hx-target="#queue-list-container"
+                hx-swap="innerHTML">
+            <input type="hidden" name="source" value="queue">
+            <div class="queue-rate-stars">
+              {% for i in range(1, 6) %}
+                <button type="submit" name="rating" value="{{ i }}" class="star-btn" title="{{ i }} star">★</button>
+              {% endfor %}
+            </div>
+          </form>
+        {% endif %}
+      {% endif %}
+
+      <div class="queue-move-btns">
+        <button class="btn-icon"
+                hx-post="/queue/{{ item.id }}/move/up"
+                hx-target="#queue-list-container"
+                hx-swap="innerHTML"
+                title="Move up">↑</button>
+        <button class="btn-icon"
+                hx-post="/queue/{{ item.id }}/move/down"
+                hx-target="#queue-list-container"
+                hx-swap="innerHTML"
+                title="Move down">↓</button>
+        <button class="btn-icon btn-remove"
+                hx-post="/queue/{{ item.rec_id }}/remove"
+                hx-target="#queue-list-container"
+                hx-swap="innerHTML"
+                title="Remove">✕</button>
+      </div>
+    </div>
+
+  </li>
+  {% else %}
+  <li class="empty">Your queue is empty. Add books from the Recommendations page.</li>
+  {% endfor %}
+</ol>
