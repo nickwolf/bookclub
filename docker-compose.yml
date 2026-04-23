@@ -23,9 +23,18 @@ services:
     restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
+      - "org.opencontainers.image.source=https://github.com/nickwolf/bookclub"
+      - "org.opencontainers.image.description=Self-hosted book recommendation app — Hardcover + Audiobookshelf + Claude AI"
+      - "org.opencontainers.image.licenses=MIT"
 
 volumes:
+  # App database — persists across rebuilds. Docker creates this automatically.
   bookclub_data:
-    external: true
+
+  # Audiobookshelf config volume (for library cross-reference).
+  # If you run ABS via Docker and want to share its volume, replace the block below with:
+  #   audiobookshelf_config:
+  #     external: true
+  # Make sure the volume name matches what your ABS container uses.
+  # If you don't use ABS, leave this as-is — the app degrades gracefully.
   audiobookshelf_config:
-    external: true
