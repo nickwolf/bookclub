@@ -44,7 +44,7 @@ def startup():
     syncer.seed_if_empty()
     # Auto-sync on startup if last sync was more than 1 hour ago (or never)
     if _should_auto_sync():
-        t = threading.Thread(target=_run_sync, daemon=True)
+        t = threading.Thread(target=_run_sync, args=(1,), daemon=True)
         t.start()
 
 
@@ -59,13 +59,13 @@ def _should_auto_sync() -> bool:
         return True
 
 
-def _run_sync():
+def _run_sync(profile_id: int = 1):
     global _sync_running
     if not _sync_lock.acquire(blocking=False):
         return
     _sync_running = True
     try:
-        syncer.run_full_sync()
+        syncer.run_full_sync(profile_id)
     finally:
         _sync_running = False
         _sync_lock.release()
