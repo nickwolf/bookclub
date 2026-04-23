@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Review · Bookclub{% endblock %}
+{% block content %}
+
+<div class="review-page">
+  {% include "partials/review_card.html" %}
+</div>
+
+<script>
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.metaKey || e.ctrlKey) return;
+  switch (e.key.toLowerCase()) {
+    case 'q': document.querySelector('.review-btn-queue')?.click(); break;
+    case 'p': document.querySelector('.review-btn-pass')?.click(); break;
+    case 'r': document.querySelector('.review-btn-read')?.click(); break;
+    case 's': document.querySelector('.review-btn-skip')?.click(); break;
+  }
+});
+</script>
+
+{% endblock %}

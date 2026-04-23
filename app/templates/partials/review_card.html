@@ -1,0 +1,137 @@
+<div id="review-slot">
+{% if not rec %}
+
+  <div class="review-done">
+    <div class="review-done-icon">✓</div>
+    <h2>All caught up!</h2>
+    <p>Nothing left to review right now.</p>
+    <div class="review-done-actions">
+      <a href="/" class="btn btn-queue">Browse recommendations</a>
+      <a href="/recs/refresh" class="btn">Generate more</a>
+    </div>
+  </div>
+
+{% else %}
+
+  {% set forced_rate = rec.user_status == 'read' and not rec.user_rating %}
+
+  <div class="review-progress">{{ remaining }} remaining</div>
+
+  <div class="review-card">
+    <div class="review-cover">
+      {% if rec.cover_url %}
+        <img src="{{ rec.cover_url }}" alt="" loading="lazy">
+      {% else %}
+        <span class="review-cover-placeholder">📖</span>
+      {% endif %}
+    </div>
+
+    <div class="review-body">
+      <div>
+        <h2 class="review-title">{{ rec.title }}</h2>
+        <div class="review-meta">
+          <span>{{ rec.author or "Unknown" }}</span>
+          {% if rec.series %}<span class="review-series">· {{ rec.series }}</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="rec-badges">
+        <span class="badge type-badge">{{ rec.type }}</span>
+        {% if rec.confidence %}
+          <span class="badge confidence-badge" title="AI confidence score">{{ rec.confidence }}% match</span>
+        {% endif %}
+        {% if rec.on_want_to_read %}
+          <span class="badge wtr-badge" title="Already on your Want to Read list">🔖 Want to Read</span>
+        {% endif %}
+        {% if rec.in_abs_library %}
+          <span class="badge in-lib">In Library</span>
+        {% endif %}
+        {% if rec.abs_finished %}
+          <span class="badge finished">Listened</span>
+        {% elif rec.abs_progress and rec.abs_progress > 0.05 %}
+          <span class="badge in-progress">{{ (rec.abs_progress * 100) | int }}%</span>
+        {% endif %}
+        {% if rec.audiobook_available == "Yes" %}
+          <span class="badge audio-yes">🎧 Audio</span>
+        {% elif rec.audiobook_available == "Partial" %}
+          <span class="badge audio-partial">🎧 Partial</span>
+        {% endif %}
+      </div>
+
+      {% if rec.tags %}
+      <div class="rec-tags">
+        {% for tag in rec.tags.split(', ') %}
+          <span class="rec-tag">{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if rec.reason %}
+      <p class="review-reason">{{ rec.reason }}</p>
+      {% endif %}
+
+      {# ---- Rating form (forced or after "Already Read") ---- #}
+      {% if forced_rate or rate_mode %}
+        <div class="review-rate-prompt">
+          {% if forced_rate %}
+            You've read this — rate it to continue
+          {% else %}
+            How would you rate it?
+          {% endif %}
+        </div>
+        <form class="review-rate-form"
+              hx-post="/review/{{ rec.id }}/rate"
+              hx-target="#review-slot"
+              hx-swap="outerHTML">
+          <input type="hidden" name="skip_ids" value="{{ skip_ids }}">
+          <div class="review-stars">
+            {% for i in range(1, 6) %}
+              <button type="submit" name="rating" value="{{ i }}" class="review-star-btn">★</button>
+            {% endfor %}
+          </div>
+        </form>
+        {% if rate_mode and not forced_rate %}
+          <button class="btn review-cancel"
+                  hx-get="/review/{{ rec.id }}/show?skip_ids={{ skip_ids }}"
+                  hx-target="#review-slot"
+                  hx-swap="outerHTML">Cancel</button>
+        {% endif %}
+
+      {# ---- Triage actions ---- #}
+      {% else %}
+        <div class="review-actions">
+          <form hx-post="/review/{{ rec.id }}/queue"
+                hx-target="#review-slot"
+                hx-swap="outerHTML">
+            <input type="hidden" name="skip_ids" value="{{ skip_ids }}">
+            <button type="submit" class="btn btn-queue review-btn review-btn-queue"
+                    title="Queue (Q)">Queue</button>
+          </form>
+          <form hx-post="/review/{{ rec.id }}/pass"
+                hx-target="#review-slot"
+                hx-swap="outerHTML">
+            <input type="hidden" name="skip_ids" value="{{ skip_ids }}">
+            <button type="submit" class="btn btn-pass review-btn review-btn-pass"
+                    title="Pass (P)">Pass</button>
+          </form>
+          <button class="btn review-btn review-btn-read"
+                  hx-get="/review/{{ rec.id }}/read-confirm?skip_ids={{ skip_ids }}"
+                  hx-target="#review-slot"
+                  hx-swap="outerHTML"
+                  title="Already Read (R)">Already Read</button>
+          <button class="btn review-btn review-btn-skip"
+                  hx-get="/review/skip/{{ rec.id }}?skip_ids={{ skip_ids }}"
+                  hx-target="#review-slot"
+                  hx-swap="outerHTML"
+                  title="Skip (S)">Skip</button>
+        </div>
+        <div class="review-kbd-hint">
+          <span>Q</span> queue &nbsp; <span>P</span> pass &nbsp; <span>R</span> read &nbsp; <span>S</span> skip
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+{% endif %}
+</div>

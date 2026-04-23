@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Bookclub{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
+</head>
+<body>
+  <nav>
+    <a href="/" class="nav-brand">📚 Bookclub</a>
+    <div class="nav-links">
+      <a href="/" {% if request.url.path == "/" %}class="active"{% endif %}>Recommendations</a>
+      <a href="/review" {% if request.url.path == "/review" %}class="active"{% endif %}>Review {% if stats.pending + stats.unrated_recs %}<span class="badge">{{ stats.pending + stats.unrated_recs }}</span>{% endif %}</a>
+      <a href="/queue" {% if request.url.path == "/queue" %}class="active"{% endif %}>Queue <span class="badge">{{ stats.queued }}</span></a>
+      <a href="/rate" {% if request.url.path == "/rate" %}class="active"{% endif %}>Rate {% set unrated_total = stats.unrated_hc + stats.unrated_recs %}{% if unrated_total %}<span class="badge">{{ unrated_total }}</span>{% endif %}</a>
+      <a href="/history" {% if request.url.path == "/history" %}class="active"{% endif %}>History</a>
+    </div>
+    <div class="nav-right">
+      <!-- Profile switcher -->
+      <div class="profile-switcher">
+        <a href="/profiles" class="nav-btn profile-chip" title="Manage profiles">
+          {{ active_profile.name if active_profile else "?" }}
+          {% if all_profiles | length > 1 %}<span class="profile-caret">▾</span>{% endif %}
+        </a>
+        {% if all_profiles | length > 1 %}
+        <div class="profile-dropdown">
+          {% for p in all_profiles %}
+            {% if p.id != (active_profile.id if active_profile else 0) %}
+            <form method="post" action="/profiles/switch/{{ p.id }}">
+              <button type="submit" class="profile-option">{{ p.name }}</button>
+            </form>
+            {% endif %}
+          {% endfor %}
+          <a href="/profiles" class="profile-option profile-manage">Manage profiles…</a>
+        </div>
+        {% endif %}
+      </div>
+
+      <a href="/settings" class="nav-btn" {% if request.url.path == "/settings" %}style="color:var(--accent)"{% endif %} title="Settings & logs">⚙</a>
+      <a href="/recs/refresh" class="nav-btn" title="Generate new recommendations via Claude">⟳ Recs</a>
+      <button hx-post="/sync"
+              hx-target="#sync-status"
+              hx-swap="innerHTML"
+              class="nav-btn nav-btn-primary"
+              hx-on::after-request="openSyncPanel()">⟳ Sync</button>
+      <span id="sync-status" hx-swap="innerHTML">
+        {% include "partials/sync_status.html" %}
+      </span>
+    </div>
+  </nav>
+
+  <!-- Sync log panel -->
+  <div id="sync-panel" class="sync-panel">
+    <div class="sync-panel-header">
+      <span class="sync-panel-title">Sync Log</span>
+      <button class="sync-panel-close" onclick="closeSyncPanel()">✕</button>
+    </div>
+    <div id="sync-panel-body" class="sync-panel-body"></div>
+  </div>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <div id="modal"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Sortable queue
+      const queueEl = document.getElementById('queue-sortable');
+      if (queueEl) {
+        new Sortable(queueEl, {
+          handle: '.drag-handle',
+          animation: 150,
+          onEnd: () => {
+            const ids = [...queueEl.querySelectorAll('[data-rec-id]')]
+              .map(el => el.dataset.recId);
+            const form = new FormData();
+            ids.forEach(id => form.append('rec_ids[]', id));
+            fetch('/queue/reorder', { method: 'POST', body: form });
+          }
+        });
+      }
+    });
+
+    let _syncPollTimer = null;
+
+    function openSyncPanel() {
+      document.getElementById('sync-panel').classList.add('open');
+      _loadSyncLog();
+    }
+
+    function closeSyncPanel() {
+      document.getElementById('sync-panel').classList.remove('open');
+      _stopSyncPoll();
+    }
+
+    async function _loadSyncLog() {
+      try {
+        const data = await fetch('/sync/log-entries').then(r => r.json());
+        const body = document.getElementById('sync-panel-body');
+        if (!body) return;
+
+        const wasAtBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+
+        body.innerHTML = data.entries.map(e => {
+          const detail = e.detail
+            ? `<div class="sync-log-detail">${_esc(e.detail)}</div>` : '';
+          return `<div class="sync-log-entry log-${_esc(e.level)}">` +
+            `<span class="sync-log-time">${_esc(e.time)}</span>` +
+            `<span class="sync-log-comp">${_esc(e.component)}</span>` +
+            `<span class="sync-log-msg">${_esc(e.message)}</span>` +
+            detail + `</div>`;
+        }).join('');
+
+        if (data.running) {
+          body.innerHTML += '<div class="sync-log-entry log-running">' +
+            '<span class="sync-log-spinner">⟳</span> Syncing…</div>';
+        }
+
+        if (wasAtBottom || data.running) body.scrollTop = body.scrollHeight;
+
+        if (data.running && !_syncPollTimer) {
+          _syncPollTimer = setInterval(_loadSyncLog, 2000);
+        } else if (!data.running) {
+          _stopSyncPoll();
+        }
+      } catch (e) { /* ignore fetch errors */ }
+    }
+
+    function _stopSyncPoll() {
+      if (_syncPollTimer) { clearInterval(_syncPollTimer); _syncPollTimer = null; }
+    }
+
+    function _esc(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+  </script>
+</body>
+</html>

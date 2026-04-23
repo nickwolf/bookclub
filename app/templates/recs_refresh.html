@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Update Recommendations · Bookclub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Update Recommendations</h1>
+  <p class="subtitle">Generate new book recommendations for {{ active_profile.name if active_profile else "your profile" }} using Claude AI</p>
+</div>
+
+{% if api_key_configured %}
+
+<div class="refresh-card">
+  <h2>Generate recommendations</h2>
+  <p>Claude will read your reading history, ratings, and current recommendations, then suggest books that match your taste.</p>
+
+  <form hx-post="/recs/generate"
+        hx-target="#gen-status"
+        hx-swap="outerHTML"
+        class="gen-form">
+    <label class="gen-label" for="count">Number of new recommendations</label>
+    <div class="gen-controls">
+      <select name="count" id="count" class="gen-select">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+      </select>
+      <button type="submit" class="btn btn-primary">Generate</button>
+    </div>
+  </form>
+
+  <div id="gen-status">
+    {% include "partials/gen_status.html" %}
+  </div>
+</div>
+
+{% else %}
+
+<div class="refresh-card">
+  <h2>API key not configured</h2>
+  <p>Add your Anthropic API key to the <code>.env</code> file and restart the container:</p>
+  <div class="code-block">
+    <code>ANTHROPIC_API_KEY=sk-ant-...</code>
+  </div>
+  <p style="margin-top: 16px">You can get an API key at <strong>console.anthropic.com</strong>.</p>
+</div>
+
+{% endif %}
+
+<div class="refresh-card" style="margin-top: 16px">
+  <h2>Or run from the host</h2>
+  <p class="refresh-hint">Open a terminal on the host and run:</p>
+  <div class="code-block">
+    <code>python3 /path/to/bookclub/scripts/refresh_recs.py --profile {{ profile_id }}</code>
+    <button class="btn btn-copy" onclick="navigator.clipboard.writeText('python3 /path/to/bookclub/scripts/refresh_recs.py --profile {{ profile_id }}')">Copy</button>
+  </div>
+
+  <div class="refresh-options">
+    <h3>Options</h3>
+    <table class="options-table">
+      <tr><td><code>--profile ID</code></td><td>Profile to generate recs for (default: 1)</td></tr>
+      <tr><td><code>--count N</code></td><td>Number of recommendations to generate (default: 10)</td></tr>
+      <tr><td><code>--dry-run</code></td><td>Print the prompt without calling Claude</td></tr>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

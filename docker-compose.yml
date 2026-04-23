@@ -1,0 +1,31 @@
+services:
+  bookclub:
+    build: .
+    container_name: bookclub
+    environment:
+      - TZ=${TZ}
+      - HARDCOVER_TOKEN=${HARDCOVER_TOKEN}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      - ABS_URL=${ABS_URL}
+      - ABS_TOKEN=${ABS_TOKEN}
+      - ABS_PLAYLIST_ID=${ABS_PLAYLIST_ID}
+    command: uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+    volumes:
+      # Live app code — changes on host reflect immediately without rebuild
+      - ./app:/app
+      # Named volume for the app database
+      - bookclub_data:/data
+      # ABS config mounted read-only for library cross-reference
+      - audiobookshelf_config:/abs_config:ro
+    ports:
+      - "${BOOKCLUB_PORT}:8080"
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
+volumes:
+  bookclub_data:
+    external: true
+  audiobookshelf_config:
+    external: true

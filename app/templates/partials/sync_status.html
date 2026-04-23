@@ -1,0 +1,17 @@
+{% if running %}
+  <span class="sync-status running"
+        hx-get="/sync/status"
+        hx-trigger="every 2s"
+        hx-target="#sync-status"
+        hx-swap="innerHTML">Syncing…</span>
+{% elif last_sync %}
+  {% if last_sync.status == "ok" %}
+    <span class="sync-status ok" title="HC: {{ last_sync.hc_synced }} | ABS: {{ last_sync.abs_synced }}">
+      ✓ {{ last_sync.finished_at[:16] | replace("T", " ") if last_sync.finished_at else "?" }}
+    </span>
+  {% else %}
+    <span class="sync-status error" title="{{ last_sync.message }}">✗ Error</span>
+  {% endif %}
+{% else %}
+  <span class="sync-status">—</span>
+{% endif %}

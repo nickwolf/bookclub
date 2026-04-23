@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Queue · Bookclub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Reading Queue</h1>
+  <p class="subtitle">{{ stats.queued }} book{% if stats.queued != 1 %}s{% endif %} queued · drag to reorder</p>
+</div>
+
+<div id="queue-list-container">
+  {% include "partials/queue_list.html" %}
+</div>
+
+{% endblock %}

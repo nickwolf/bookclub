@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Profiles · Bookclub{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Profiles</h1>
+  <p class="subtitle">Each profile has its own queue, ratings, and notes. Preferences are injected into AI recommendations.</p>
+</div>
+
+<div class="profiles-list">
+  {% for p in all_profiles %}
+  <div class="profile-card {% if active_profile and p.id == active_profile.id %}profile-active{% endif %}">
+    <div class="profile-header">
+      <div class="profile-info">
+        <strong>{{ p.name }}</strong>
+        {% if active_profile and p.id == active_profile.id %}
+          <span class="badge" style="margin-left:8px">Active</span>
+        {% else %}
+        <form method="post" action="/profiles/switch/{{ p.id }}" style="display:inline">
+          <button type="submit" class="btn" style="margin-left:10px">Switch</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <form hx-post="/profiles/{{ p.id }}/preferences"
+          hx-target="#pref-status-{{ p.id }}"
+          hx-swap="innerHTML"
+          hx-trigger="blur from:find textarea"
+          class="pref-form">
+      <label class="pref-label">AI recommendation preferences</label>
+      <textarea name="preferences"
+                class="pref-input"
+                placeholder="e.g. I prefer long series over standalones, love fast-paced progression fantasy, avoid horror and heavy grimdark…"
+                rows="3">{{ p.preferences or "" }}</textarea>
+      <div class="note-footer">
+        <button type="submit" class="btn rec-notes-save">Save</button>
+        <span id="pref-status-{{ p.id }}" class="note-status"></span>
+      </div>
+    </form>
+
+    <form hx-post="/profiles/{{ p.id }}/abs-token"
+          hx-target="#abs-token-status-{{ p.id }}"
+          hx-swap="innerHTML"
+          class="pref-form" style="margin-top:12px">
+      <label class="pref-label">
+        Audiobookshelf API token
+        <span class="pref-hint">Found in ABS → Settings → Users → your account → API Token</span>
+      </label>
+      <div class="abs-token-row">
+        <input type="password"
+               name="abs_token"
+               class="pref-input abs-token-input"
+               placeholder="eyJhbGci…"
+               value="{{ p.abs_token or '' }}"
+               autocomplete="off">
+        <button type="submit" class="btn rec-notes-save">Save</button>
+      </div>
+      {% if p.abs_picks_playlist_id %}
+        <div class="abs-token-linked">Bookclub Picks playlist linked ✓</div>
+      {% endif %}
+      <span id="abs-token-status-{{ p.id }}" class="note-status"></span>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="profiles-new">
+  <h2>Add Profile</h2>
+  <form method="post" action="/profiles" class="new-profile-form">
+    <input type="text" name="name" placeholder="Name" required maxlength="50" class="profile-name-input">
+    <button type="submit" class="btn btn-queue">Add Profile</button>
+  </form>
+</div>
+
+{% endblock %}
