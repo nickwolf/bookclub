@@ -28,8 +28,10 @@ services:
       - "org.opencontainers.image.licenses=MIT"
 
 volumes:
-  # App database — persists across rebuilds. Docker creates this automatically.
+  # App database. Create before first run: docker volume create bookclub_data
+  # Marked external so it's never deleted by `docker compose down -v`.
   bookclub_data:
+    external: true
 
   # Audiobookshelf config volume (for library cross-reference).
   # If you run ABS via Docker and want to share its volume, replace the block below with:

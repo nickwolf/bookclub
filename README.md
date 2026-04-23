@@ -70,14 +70,17 @@ Syncs your reading history from [Hardcover](https://hardcover.app), cross-refere
 git clone https://github.com/nickwolf/bookclub.git
 cd bookclub
 
-# 2. Configure environment
+# 2. Create the database volume (only needed once)
+docker volume create bookclub_data
+
+# 3. Configure environment
 cp .env.example .env
 # Edit .env — at minimum set HARDCOVER_TOKEN and ANTHROPIC_API_KEY
 
-# 3. Build and start
+# 4. Build and start
 docker compose up -d --build
 
-# 4. Open http://localhost:8585
+# 5. Open http://localhost:8585
 ```
 
 Then click **⟳ Sync** to pull in your Hardcover data, and **↺ Recs** to generate your first AI recommendations.
