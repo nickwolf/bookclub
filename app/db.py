@@ -325,7 +325,7 @@ def get_bookclub_picks(profile_id: int) -> list[sqlite3.Row]:
             WHERE r.in_abs_library = 1
               AND r.abs_library_item_id IS NOT NULL
               AND r.source IN ('claude', 'claude-api')
-              AND COALESCE(ri.user_status, 'pending') NOT IN ('read', 'passed')
+              AND COALESCE(ri.user_status, 'pending') NOT IN ('read', 'pass')
             ORDER BY r.confidence DESC NULLS LAST, r.created_at ASC
         """, (profile_id,)).fetchall()
 
