@@ -40,8 +40,8 @@
         {% endif %}
       </div>
 
-      <a href="/settings" class="nav-btn" {% if request.url.path == "/settings" %}style="color:var(--accent)"{% endif %} title="Settings & logs">⚙</a>
-      <a href="/recs/refresh" class="nav-btn" title="Generate new recommendations via Claude">⟳ Recs</a>
+      <a href="/settings" class="nav-btn nav-settings-btn" {% if request.url.path == "/settings" %}style="color:var(--accent)"{% endif %} title="Settings & logs">⚙</a>
+      <a href="/recs/refresh" class="nav-btn nav-recs-btn" title="Generate new recommendations via Claude">⟳ Recs</a>
       <button hx-post="/sync"
               hx-target="#sync-status"
               hx-swap="innerHTML"
