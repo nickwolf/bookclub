@@ -1,7 +1,11 @@
 {% set status = rec.user_status %}
 <div class="rec-card status-{{ status }}" id="rec-{{ rec.id }}">
 
-  <div class="rec-cover">
+  <div class="rec-cover rec-detail-trigger"
+       hx-get="/rec/{{ rec.id }}/detail"
+       hx-target="#modal"
+       hx-swap="innerHTML"
+       title="View details">
     {% if rec.cover_url %}
       <img src="{{ rec.cover_url }}" alt="" loading="lazy">
     {% else %}
@@ -11,7 +15,11 @@
 
   <div class="rec-body">
     <div>
-      <h3 class="rec-title">{{ rec.title }}</h3>
+      <h3 class="rec-title rec-detail-trigger"
+          hx-get="/rec/{{ rec.id }}/detail"
+          hx-target="#modal"
+          hx-swap="innerHTML"
+          title="View details">{{ rec.title }}</h3>
       <div class="rec-meta">
         <span class="rec-author">{{ rec.author or "Unknown" }}</span>
         {% if rec.series %}<span class="rec-series">· {{ rec.series }}</span>{% endif %}

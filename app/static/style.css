@@ -178,6 +178,7 @@ main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
   flex-shrink: 0;
   align-self: flex-start;
 }
+.rec-detail-trigger { cursor: pointer; }
 .rec-cover img {
   width: 100%;
   height: auto;
