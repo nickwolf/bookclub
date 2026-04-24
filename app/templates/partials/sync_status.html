@@ -6,8 +6,14 @@
         hx-swap="innerHTML">Syncing…</span>
 {% elif last_sync %}
   {% if last_sync.status == "ok" %}
-    <span class="sync-status ok" title="HC: {{ last_sync.hc_synced }} | ABS: {{ last_sync.abs_synced }}">
-      ✓ {{ last_sync.finished_at[:16] | replace("T", " ") if last_sync.finished_at else "?" }}
+    {% if last_sync.finished_at %}
+      {% set ts = last_sync.finished_at %}
+      {% set label = ts[11:16] if ts[:10] == today else ts[:10] %}
+    {% else %}
+      {% set label = "?" %}
+    {% endif %}
+    <span class="sync-status ok" title="HC: {{ last_sync.hc_synced }} | ABS: {{ last_sync.abs_synced }} · {{ last_sync.finished_at[:16] | replace('T',' ') if last_sync.finished_at else '' }}">
+      ✓ {{ label }}
     </span>
   {% else %}
     <span class="sync-status error" title="{{ last_sync.message }}">✗ Error</span>

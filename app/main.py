@@ -100,6 +100,7 @@ def _tmpl(request, name, **ctx):
     ctx["last_sync"] = db.get_last_sync()
     ctx["active_profile"] = db.get_profile(profile_id)
     ctx["all_profiles"] = db.get_profiles()
+    ctx["today"] = datetime.now().strftime("%Y-%m-%d")
     return templates.TemplateResponse(name, ctx)
 
 
