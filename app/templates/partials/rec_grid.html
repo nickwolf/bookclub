@@ -1,0 +1,9 @@
+<div id="rec-results">
+  <div class="rec-grid">
+    {% for rec in recs %}
+      {% include "partials/rec_card.html" %}
+    {% else %}
+      <p class="empty">No recommendations in this view.</p>
+    {% endfor %}
+  </div>
+</div>
