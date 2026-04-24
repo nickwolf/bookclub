@@ -7,7 +7,9 @@
   <p class="subtitle">{{ total }} books shown · {{ stats.hc_read }} total read · synced from Hardcover</p>
 </div>
 
-<form class="history-filters" method="get" action="/history">
+<form class="history-filters" method="get" action="/history"
+      hx-get="/history" hx-target="#history-results"
+      hx-trigger="input from:find input[name=q] changed delay:300ms, change from:find select[name=rating], submit">
   <input type="search" name="q" value="{{ q }}" placeholder="Search title or author…">
   <select name="rating">
     <option value="">All ratings</option>
@@ -19,38 +21,6 @@
   {% if q or rating %}<a href="/history" class="btn btn-pass">Clear</a>{% endif %}
 </form>
 
-<div class="history-grid">
-  {% for book in books %}
-  <div class="history-card">
-    {% if book.cover_url %}
-      <img class="history-cover" src="{{ book.cover_url }}" alt="" loading="lazy">
-    {% else %}
-      <div class="history-cover cover-placeholder">📖</div>
-    {% endif %}
-    <div class="history-info">
-      <strong>{{ book.title }}</strong>
-      <span>{{ book.author or "" }}</span>
-      {% if book.series %}<span class="history-series">{{ book.series }}</span>{% endif %}
-      {% if book.rating %}
-        <span class="stars">{{ "★" * book.rating | int }}{{ "☆" * (5 - book.rating | int) }} ({{ book.rating }})</span>
-      {% endif %}
-    </div>
-  </div>
-  {% else %}
-  <p class="empty">No books found. Run a sync to import your Hardcover history.</p>
-  {% endfor %}
-</div>
-
-{% if total_pages > 1 %}
-<div class="pagination">
-  {% if page > 1 %}
-    <a href="/history?q={{ q }}&rating={{ rating }}&page={{ page - 1 }}" class="btn">← Prev</a>
-  {% endif %}
-  <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
-  {% if page < total_pages %}
-    <a href="/history?q={{ q }}&rating={{ rating }}&page={{ page + 1 }}" class="btn">Next →</a>
-  {% endif %}
-</div>
-{% endif %}
+{% include "partials/history_results.html" %}
 
 {% endblock %}

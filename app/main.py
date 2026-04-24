@@ -118,6 +118,9 @@ def _card(request, rec_id: int):
 def recommendations_page(request: Request, status: str = "all", q: str = ""):
     profile_id = get_profile_id(request)
     recs = db.get_recommendations(status, profile_id, q)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("partials/rec_grid.html",
+                                          {"request": request, "recs": recs})
     return _tmpl(request, "recommendations.html",
                  recs=recs, current_status=status, q=q, status_labels=STATUS_LABELS)
 
@@ -268,8 +271,12 @@ def history_page(request: Request, q: str = "", rating: str = "", page: int = 1)
             params + [HISTORY_PAGE_SIZE, offset]
         ).fetchall()
     total_pages = max(1, (total + HISTORY_PAGE_SIZE - 1) // HISTORY_PAGE_SIZE)
-    return _tmpl(request, "history.html", books=books, q=q, rating=rating, hc_status=HC_STATUS,
-                 page=page, total_pages=total_pages, total=total)
+    ctx = dict(books=books, q=q, rating=rating, hc_status=HC_STATUS,
+               page=page, total_pages=total_pages, total=total)
+    if request.headers.get("HX-Request"):
+        return templates.TemplateResponse("partials/history_results.html",
+                                          {"request": request, **ctx})
+    return _tmpl(request, "history.html", **ctx)
 
 
 # ---------------------------------------------------------------------------

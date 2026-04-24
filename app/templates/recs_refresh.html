@@ -52,7 +52,7 @@
   <p class="refresh-hint">Open a terminal on the host and run:</p>
   <div class="code-block">
     <code>python3 /path/to/bookclub/scripts/refresh_recs.py --profile {{ profile_id }}</code>
-    <button class="btn btn-copy" onclick="navigator.clipboard.writeText('python3 /path/to/bookclub/scripts/refresh_recs.py --profile {{ profile_id }}')">Copy</button>
+    <button class="btn btn-copy" onclick="navigator.clipboard.writeText('python3 /path/to/bookclub/scripts/refresh_recs.py --profile {{ profile_id }}').then(()=>{this.textContent='Copied!'}).catch(()=>{this.textContent='Select & copy manually'});setTimeout(()=>{this.textContent='Copy'},2000)">Copy</button>
   </div>
 
   <div class="refresh-options">
