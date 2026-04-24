@@ -337,6 +337,10 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
 .profile-card.profile-active { border-color: var(--accent-dim); }
 .profile-info { display: flex; align-items: center; }
 .profiles-new { max-width: 480px; }
+.profile-active-badge { margin-left: 8px; }
+.profile-switch-btn   { margin-left: 10px; }
+.profile-switch-form  { display: inline; }
+.pref-form-gap        { margin-top: 12px; }
 .profile-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .pref-form { display: flex; flex-direction: column; gap: 6px; }
 .pref-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
@@ -436,6 +440,7 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
 }
 .code-block code { flex: 1; font-family: monospace; font-size: 13px; color: var(--green); }
 .btn-copy { flex-shrink: 0; }
+.refresh-card-gap { margin-top: 16px; }
 .refresh-options h3 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .options-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .options-table td { padding: 5px 8px; color: var(--text-muted); vertical-align: top; }
@@ -470,6 +475,7 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
   border-radius: 6px;
   font-size: 13px;
 }
+.gen-view-btn { margin-left: 12px; }
 .gen-status.running {
   background: var(--surface2);
   color: var(--text-muted);

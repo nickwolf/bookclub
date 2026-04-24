@@ -14,7 +14,7 @@
   {% else %}
 <div id="gen-status" class="gen-status success">
   <strong>Done!</strong> Added {{ gen_last.added }} new recommendation{{ "s" if gen_last.added != 1 else "" }}.
-  <a href="/" class="btn btn-queue" style="margin-left: 12px">View recommendations</a>
+  <a href="/" class="btn btn-queue gen-view-btn">View recommendations</a>
 </div>
   {% endif %}
 {% else %}
