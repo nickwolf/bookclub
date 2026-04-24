@@ -185,8 +185,14 @@ main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
   display: block;
 }
 .rec-cover-placeholder {
-  font-size: 28px;
-  opacity: .4;
+  font-size: 24px;
+  opacity: .3;
+  width: 80px;
+  height: 112px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
 }
 
 .rec-body {
