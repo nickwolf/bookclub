@@ -867,6 +867,10 @@ def get_rec_context(profile_id: int = 1) -> dict:
             ORDER BY rating ASC, title
         """).fetchall()
 
+        all_read = conn.execute("""
+            SELECT title, author FROM hc_books WHERE status_id = 3 ORDER BY title
+        """).fetchall()
+
         existing_recs = conn.execute(
             "SELECT title, author FROM recommendations ORDER BY title"
         ).fetchall()
@@ -895,6 +899,7 @@ def get_rec_context(profile_id: int = 1) -> dict:
         "currently_reading": [dict(r) for r in currently_reading],
         "dnf_books": [dict(r) for r in dnf_books],
         "low_rated_books": [dict(r) for r in low_rated],
+        "all_read_books": [dict(r) for r in all_read],
         "existing_recs": [dict(r) for r in existing_recs],
         "passed_with_notes": [dict(r) for r in passed_with_notes],
         "read_recs": [dict(r) for r in read_recs],

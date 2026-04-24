@@ -90,6 +90,17 @@ def build_prompt(ctx: dict, count: int) -> str:
             f"than DNF, pay close attention to what these have in common:\n{lines}"
         )
 
+    all_read = ctx.get("all_read_books", [])
+    if all_read:
+        lines = "\n".join(
+            f"  - {b['title']}" + (f" by {b['author']}" if b.get("author") else "")
+            for b in all_read
+        )
+        sections.append(
+            f"Books already read — do NOT recommend any of these under any circumstances "
+            f"(this includes any format: audiobook, ebook, or print):\n{lines}"
+        )
+
     existing = [r["title"] for r in ctx.get("existing_recs", [])]
     if existing:
         sections.append(f"Already recommended — do NOT repeat these:\n  {', '.join(existing)}")
@@ -157,20 +168,23 @@ def run_generation(profile_id: int, count: int) -> dict:
         raise
     recs = extract_json(message.content[0].text)
 
-    # Deduplicate within the returned batch (case-insensitive) and against existing DB titles
+    # Deduplicate: existing recommendations + already-read HC books
     with db.db() as conn:
         existing_titles = {
             row[0].lower() for row in
             conn.execute("SELECT title FROM recommendations").fetchall()
         }
+    hc_read_titles = db.get_hc_read_titles()
+    blocked_titles = existing_titles | hc_read_titles
+
     seen_in_batch: set[str] = set()
     deduped = []
     for rec in recs:
         key = rec.get("title", "").strip().lower()
         if not key:
             continue
-        if key in existing_titles or key in seen_in_batch:
-            db.log("gen", f"Skipped duplicate: {rec.get('title')}", level="info")
+        if key in blocked_titles or key in seen_in_batch:
+            db.log("gen", f"Skipped duplicate/already-read: {rec.get('title')}", level="info")
             continue
         seen_in_batch.add(key)
         deduped.append(rec)
