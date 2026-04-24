@@ -14,10 +14,10 @@
       <div class="profile-info">
         <strong>{{ p.name }}</strong>
         {% if active_profile and p.id == active_profile.id %}
-          <span class="badge" style="margin-left:8px">Active</span>
+          <span class="badge profile-active-badge">Active</span>
         {% else %}
-        <form method="post" action="/profiles/switch/{{ p.id }}" style="display:inline">
-          <button type="submit" class="btn" style="margin-left:10px">Switch</button>
+        <form method="post" action="/profiles/switch/{{ p.id }}" class="profile-switch-form">
+          <button type="submit" class="btn profile-switch-btn">Switch</button>
         </form>
         {% endif %}
       </div>
@@ -42,7 +42,7 @@
     <form hx-post="/profiles/{{ p.id }}/abs-token"
           hx-target="#abs-token-status-{{ p.id }}"
           hx-swap="innerHTML"
-          class="pref-form" style="margin-top:12px">
+          class="pref-form pref-form-gap">
       <label class="pref-label">
         Audiobookshelf API token
         <span class="pref-hint">Found in ABS → Settings → Users → your account → API Token</span>
