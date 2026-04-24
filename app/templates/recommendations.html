@@ -17,7 +17,8 @@
 
 <form class="rec-search-form" method="get" action="/">
   <input type="hidden" name="status" value="{{ current_status }}">
-  <input type="search" name="q" value="{{ q }}" placeholder="Search title, author, series…" class="rec-search-input">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search title, author, series…" class="rec-search-input"
+         hx-get="/" hx-target="#rec-results" hx-trigger="input changed delay:300ms" hx-include="closest form">
   {% if q %}<a href="/?status={{ current_status }}" class="btn btn-pass rec-search-clear">✕</a>{% endif %}
 </form>
 
@@ -30,12 +31,6 @@
   {% endfor %}
 </div>
 
-<div class="rec-grid">
-  {% for rec in recs %}
-    {% include "partials/rec_card.html" %}
-  {% else %}
-    <p class="empty">No recommendations in this view.</p>
-  {% endfor %}
-</div>
+{% include "partials/rec_grid.html" %}
 
 {% endblock %}
