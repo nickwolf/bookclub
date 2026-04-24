@@ -69,6 +69,34 @@
     </table>
   </section>
 
+  <!-- Danger zone -->
+  <section class="settings-card settings-danger-card">
+    <h2>Danger zone</h2>
+    <p class="settings-danger-note">These actions affect the active profile (<strong>{{ active_profile.name if active_profile else "?" }}</strong>) and cannot be undone.</p>
+    <div class="settings-danger-actions">
+      <form method="post" action="/settings/clear/recommendations"
+            onsubmit="return confirm('Delete all recommendations and queue for this profile? This cannot be undone.')">
+        <button class="btn btn-danger" type="submit">Delete recommendations &amp; queue</button>
+        <span class="settings-danger-desc">Clears all rec interactions and queue entries for this profile.</span>
+      </form>
+      <form method="post" action="/settings/clear/ratings"
+            onsubmit="return confirm('Clear all ratings and notes for this profile? This cannot be undone.')">
+        <button class="btn btn-danger" type="submit">Clear rating history</button>
+        <span class="settings-danger-desc">Removes all star ratings and notes from rec interactions.</span>
+      </form>
+      <form method="post" action="/settings/clear/playlist"
+            onsubmit="return confirm('Unlink the ABS picks playlist for this profile?')">
+        <button class="btn btn-danger" type="submit">Unlink ABS playlist</button>
+        <span class="settings-danger-desc">Clears the saved Audiobookshelf picks playlist ID for this profile.</span>
+      </form>
+      <form method="post" action="/settings/delete-profile"
+            onsubmit="return confirm('Permanently delete this profile and all its data? This cannot be undone.')">
+        <button class="btn btn-danger btn-danger-strong" type="submit">Delete profile</button>
+        <span class="settings-danger-desc">Deletes the profile and all associated recommendations, ratings, and queue data.</span>
+      </form>
+    </div>
+  </section>
+
 </div>
 
 {% endblock %}
