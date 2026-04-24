@@ -241,6 +241,10 @@ main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
   line-height: 1.5;
   border-left: 2px solid var(--border);
   padding-left: 10px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .rec-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
@@ -1015,3 +1019,34 @@ img.history-cover { display: block; }
 .sync-log-empty { padding: 16px 14px; color: var(--text-muted); font-style: italic; }
 .sync-log-spinner { display: inline-block; animation: spin 1.2s linear infinite; }
 .page-info { font-size: 13px; }
+
+/* ---- Mobile nav ---- */
+@media (max-width: 768px) {
+  nav {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 12px 0;
+    gap: 6px;
+  }
+  .nav-brand { flex-shrink: 0; }
+  .nav-links {
+    order: 10;
+    flex-basis: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 6px 0 6px;
+    border-top: 1px solid var(--border);
+    margin: 0 -12px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .nav-right {
+    margin-left: auto;
+    border-left: none;
+    padding-left: 0;
+  }
+  .nav-settings-btn,
+  .nav-recs-btn { display: none; }
+}
