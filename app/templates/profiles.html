@@ -1,76 +1,116 @@
 {% extends "base.html" %}
-{% block title %}Profiles · Bookclub{% endblock %}
+{% block title %}Users · Bookclub{% endblock %}
 {% block content %}
 
 <div class="page-header">
-  <h1>Profiles</h1>
-  <p class="subtitle">Each profile has its own queue, ratings, and notes. Preferences are injected into AI recommendations.</p>
+  <h1>Users</h1>
+  <p class="subtitle">Each user has their own queue, ratings, and notes. Preferences are injected into AI recommendations.</p>
 </div>
 
-<div class="profiles-list">
-  {% for p in all_profiles %}
-  <div class="profile-card {% if active_profile and p.id == active_profile.id %}profile-active{% endif %}">
-    <div class="profile-header">
-      <div class="profile-info">
-        <strong>{{ p.name }}</strong>
-        {% if active_profile and p.id == active_profile.id %}
-          <span class="badge profile-active-badge">Active</span>
+<table class="users-table">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>ABS</th>
+      <th>Status</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in all_profiles %}
+    <tr class="user-row {% if active_profile and p.id == active_profile.id %}user-row-active{% endif %}">
+      <td class="user-name">{{ p.name }}</td>
+      <td class="user-abs">
+        {% if p.abs_token %}
+          <span class="user-abs-ok" title="API token configured">✓</span>
+          {% if p.abs_picks_playlist_id %}<span class="user-abs-playlist" title="Picks playlist linked">playlist</span>{% endif %}
         {% else %}
-        <form method="post" action="/profiles/switch/{{ p.id }}" class="profile-switch-form">
-          <button type="submit" class="btn profile-switch-btn">Switch</button>
-        </form>
+          <span class="user-abs-none">—</span>
         {% endif %}
-      </div>
-    </div>
+      </td>
+      <td class="user-status">
+        {% if active_profile and p.id == active_profile.id %}
+          <span class="badge">Active</span>
+        {% else %}
+          <form method="post" action="/profiles/switch/{{ p.id }}">
+            <button type="submit" class="btn btn-sm">Switch</button>
+          </form>
+        {% endif %}
+      </td>
+      <td class="user-actions">
+        <button class="btn btn-sm"
+                onclick="toggleUserEdit({{ p.id }})"
+                id="user-edit-toggle-{{ p.id }}">Configure</button>
+      </td>
+    </tr>
+    <tr class="user-edit-row" id="user-edit-{{ p.id }}">
+      <td colspan="4">
+        <div class="user-edit-panel">
 
-    <form hx-post="/profiles/{{ p.id }}/preferences"
-          hx-target="#pref-status-{{ p.id }}"
-          hx-swap="innerHTML"
-          hx-trigger="blur from:find textarea"
-          class="pref-form">
-      <label class="pref-label">AI recommendation preferences</label>
-      <textarea name="preferences"
-                class="pref-input"
-                placeholder="e.g. I prefer long series over standalones, love fast-paced progression fantasy, avoid horror and heavy grimdark…"
-                rows="3">{{ p.preferences or "" }}</textarea>
-      <div class="note-footer">
-        <button type="submit" class="btn rec-notes-save">Save</button>
-        <span id="pref-status-{{ p.id }}" class="note-status"></span>
-      </div>
-    </form>
+          <div class="user-edit-section">
+            <div class="pref-label">AI recommendation preferences</div>
+            <form hx-post="/profiles/{{ p.id }}/preferences"
+                  hx-target="#pref-status-{{ p.id }}"
+                  hx-swap="innerHTML"
+                  hx-trigger="blur from:find textarea"
+                  class="pref-form">
+              <textarea name="preferences"
+                        class="pref-input"
+                        placeholder="e.g. I prefer long series over standalones, love fast-paced progression fantasy, avoid horror and heavy grimdark…"
+                        rows="4">{{ p.preferences or "" }}</textarea>
+              <div class="note-footer">
+                <button type="submit" class="btn rec-notes-save">Save</button>
+                <span id="pref-status-{{ p.id }}" class="note-status"></span>
+              </div>
+            </form>
+          </div>
 
-    <form hx-post="/profiles/{{ p.id }}/abs-token"
-          hx-target="#abs-token-status-{{ p.id }}"
-          hx-swap="innerHTML"
-          class="pref-form pref-form-gap">
-      <label class="pref-label">
-        Audiobookshelf API token
-        <span class="pref-hint">Found in ABS → Settings → Users → your account → API Token</span>
-      </label>
-      <div class="abs-token-row">
-        <input type="password"
-               name="abs_token"
-               class="pref-input abs-token-input"
-               placeholder="eyJhbGci…"
-               value="{{ p.abs_token or '' }}"
-               autocomplete="off">
-        <button type="submit" class="btn rec-notes-save">Save</button>
-      </div>
-      {% if p.abs_picks_playlist_id %}
-        <div class="abs-token-linked">Bookclub Picks playlist linked ✓</div>
-      {% endif %}
-      <span id="abs-token-status-{{ p.id }}" class="note-status"></span>
-    </form>
-  </div>
-  {% endfor %}
-</div>
+          <div class="user-edit-section">
+            <div class="pref-label">
+              Audiobookshelf API token
+              <span class="pref-hint">ABS → Settings → Users → your account → API Token</span>
+            </div>
+            <form hx-post="/profiles/{{ p.id }}/abs-token"
+                  hx-target="#abs-token-status-{{ p.id }}"
+                  hx-swap="innerHTML"
+                  class="pref-form">
+              <div class="abs-token-row">
+                <input type="password"
+                       name="abs_token"
+                       class="pref-input abs-token-input"
+                       placeholder="eyJhbGci…"
+                       value="{{ p.abs_token or '' }}"
+                       autocomplete="off">
+                <button type="submit" class="btn rec-notes-save">Save</button>
+              </div>
+              {% if p.abs_picks_playlist_id %}
+                <div class="abs-token-linked">Bookclub Picks playlist linked ✓</div>
+              {% endif %}
+              <span id="abs-token-status-{{ p.id }}" class="note-status"></span>
+            </form>
+          </div>
 
-<div class="profiles-new">
-  <h2>Add Profile</h2>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="users-add">
   <form method="post" action="/profiles" class="new-profile-form">
-    <input type="text" name="name" placeholder="Name" required maxlength="50" class="profile-name-input">
-    <button type="submit" class="btn btn-queue">Add Profile</button>
+    <input type="text" name="name" placeholder="New user name" required maxlength="50" class="profile-name-input">
+    <button type="submit" class="btn btn-queue">Add User</button>
   </form>
 </div>
+
+<script>
+  function toggleUserEdit(id) {
+    const row = document.getElementById('user-edit-' + id);
+    const btn = document.getElementById('user-edit-toggle-' + id);
+    const open = row.classList.toggle('open');
+    btn.textContent = open ? 'Done' : 'Configure';
+  }
+</script>
 
 {% endblock %}
