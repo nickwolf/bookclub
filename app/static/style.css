@@ -354,29 +354,78 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
 }
 
 
-/* ---- Profiles page ---- */
-.profiles-list { display: flex; flex-direction: column; gap: 10px; max-width: 480px; margin-bottom: 32px; }
-.profile-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* ---- Users (profiles) page ---- */
+.users-table {
+  width: 100%;
+  max-width: 680px;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+}
+.users-table thead th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.user-row td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  vertical-align: middle;
+}
+.user-row-active .user-name { font-weight: 600; color: var(--accent); }
+.user-abs-ok    { color: #81c784; font-weight: 600; }
+.user-abs-none  { color: var(--text-muted); }
+.user-abs-playlist {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+.user-actions { text-align: right; }
+.btn-sm { padding: 3px 10px; font-size: 11px; }
+
+.user-edit-row { display: none; }
+.user-edit-row.open { display: table-row; }
+.user-edit-row td { padding: 0; border-bottom: 1px solid var(--border); }
+.user-edit-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 16px 12px;
+  background: var(--surface2);
+}
+@media (max-width: 600px) {
+  .user-edit-panel { grid-template-columns: 1fr; }
+}
+.user-edit-section { display: flex; flex-direction: column; gap: 8px; }
+
+.users-add { max-width: 680px; }
+.new-profile-form { display: flex; gap: 8px; }
+.profile-name-input {
+  flex: 1;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 12px;
+  font-size: 13px;
 }
-.profile-card.profile-active { border-color: var(--accent-dim); }
-.profile-info { display: flex; align-items: center; }
-.profiles-new { max-width: 480px; }
-.profile-active-badge { margin-left: 8px; }
-.profile-switch-btn   { margin-left: 10px; }
-.profile-switch-form  { display: inline; }
-.pref-form-gap        { margin-top: 12px; }
-.profile-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.profile-name-input:focus { outline: none; border-color: var(--accent-dim); }
+
+.pref-form-gap { margin-top: 12px; }
 .pref-form { display: flex; flex-direction: column; gap: 6px; }
 .pref-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 .pref-input {
-  background: var(--surface2);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
@@ -389,24 +438,11 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
 }
 .pref-input:focus { outline: none; border-color: var(--accent-dim); }
 .pref-input::placeholder { color: var(--text-muted); }
-
-.profiles-new h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
 .pref-hint { font-size: 10px; color: var(--text-muted); font-style: italic; margin-left: 6px; text-transform: none; letter-spacing: 0; }
 .note-footer { display: flex; align-items: center; gap: 8px; }
 .abs-token-row { display: flex; gap: 8px; }
 .abs-token-input { flex: 1; font-family: monospace; font-size: .8rem; }
 .abs-token-linked { font-size: .75rem; color: #81c784; margin-top: 2px; }
-.new-profile-form { display: flex; gap: 8px; }
-.profile-name-input {
-  flex: 1;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  padding: 7px 12px;
-  font-size: 13px;
-}
-.profile-name-input:focus { outline: none; border-color: var(--accent-dim); }
 
 /* ---- Settings / log ---- */
 .settings-grid { display: flex; flex-direction: column; gap: 24px; max-width: 900px; }
