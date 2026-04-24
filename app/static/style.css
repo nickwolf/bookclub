@@ -238,7 +238,7 @@ main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
   border-radius: 20px;
   background: var(--surface2);
   color: var(--text-muted);
-  border: 1px solid var(--border);
+  font-weight: 500;
 }
 
 .rec-reason {
@@ -287,11 +287,11 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
   white-space: nowrap;
 }
 .btn:hover { background: var(--border); }
-.btn-queue  { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-queue:hover { background: #5a78f0; border-color: #5a78f0; color: #fff; }
-.btn-pass   { color: var(--text-muted); border-color: transparent; background: transparent; font-size: 11px; }
-.btn-pass:hover { background: var(--surface2); border-color: var(--border); }
-.btn-read   { border-color: rgba(74,222,128,.3); color: var(--green); font-size: 11px; }
+.btn-queue  { border-color: var(--accent-dim); color: var(--accent); }
+.btn-queue:hover { background: var(--accent-dim); color: var(--text); }
+.btn-pass   { border-color: var(--border); color: var(--text-muted); }
+.btn-pass:hover { background: var(--border); color: var(--text); }
+.btn-read   { border-color: rgba(74,222,128,.3); color: var(--green); }
 .btn-read:hover { background: rgba(74,222,128,.15); }
 .btn-unpass { color: var(--text-muted); font-style: italic; }
 
