@@ -95,10 +95,6 @@ nav {
   text-decoration: none;
 }
 
-/* Sync is the primary action — white text so it reads as more prominent */
-.nav-btn-primary { color: var(--text); }
-.nav-btn-primary:hover { background: var(--surface2); }
-
 /* Profile chip keeps a border — it's a dropdown trigger, needs affordance */
 .profile-chip {
   border: 1px solid var(--border);
@@ -106,7 +102,8 @@ nav {
   padding: 4px 10px;
   color: var(--text);
 }
-.profile-chip:hover { border-color: var(--accent-dim); background: var(--surface2); }
+.profile-chip:hover { border-color: var(--accent-dim); }
+.profile-menu.open .profile-chip { border-color: var(--accent-dim); background: var(--surface2); }
 
 .profile-caret { font-size: 10px; opacity: .6; }
 
@@ -301,10 +298,8 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
 .status-label.pass  { background: var(--surface2); color: var(--text-muted); }
 .status-label.read  { background: rgba(74,222,128,.15); color: var(--green); }
 
-/* ---- Profile switcher ---- */
-.profile-switcher {
-  position: relative;
-}
+/* ---- Profile menu (nav top-right) ---- */
+.profile-menu { position: relative; }
 .profile-dropdown {
   display: none;
   position: absolute;
@@ -314,11 +309,26 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  min-width: 160px;
+  min-width: 200px;
   z-index: 200;
   overflow: hidden;
 }
-.profile-switcher:hover .profile-dropdown { display: block; }
+.profile-menu.open .profile-dropdown { display: block; }
+
+.profile-drop-header {
+  padding: 10px 14px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.profile-drop-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
 .profile-option {
   display: block;
   width: 100%;
@@ -330,9 +340,18 @@ nav .badge { background: var(--accent-dim); color: var(--text); font-size: 11px;
   text-align: left;
   cursor: pointer;
   text-decoration: none;
+  font-family: inherit;
+  box-sizing: border-box;
 }
-.profile-option:hover { background: var(--surface2); text-decoration: none; }
-.profile-manage { color: var(--text-muted); font-size: 12px; border-top: 1px solid var(--border); }
+.profile-option:hover { background: var(--surface2); text-decoration: none; color: var(--text); }
+.profile-option-active { color: var(--accent); }
+.profile-option-active:hover { color: var(--accent); }
+
+.profile-option-sync {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
 
 /* ---- Profiles page ---- */
@@ -1056,6 +1075,4 @@ img.history-cover { display: block; }
     border-left: none;
     padding-left: 0;
   }
-  .nav-settings-btn,
-  .nav-recs-btn { display: none; }
 }
