@@ -167,12 +167,12 @@ main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
 .rec-card.status-queued { border-left: 3px solid var(--accent); }
 
 .rec-cover {
-  width: 80px;
-  min-width: 80px;
-  max-height: 120px;
+  width: 88px;
+  min-width: 88px;
+  height: 88px;
   background: var(--surface2);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   overflow: hidden;
   flex-shrink: 0;
@@ -181,14 +181,15 @@ main { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
 .rec-detail-trigger { cursor: pointer; }
 .rec-cover img {
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
   display: block;
 }
 .rec-cover-placeholder {
   font-size: 24px;
   opacity: .3;
-  width: 80px;
-  height: 112px;
+  width: 88px;
+  height: 88px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -760,15 +761,16 @@ img.rate-hc-cover { display: block; }
 
 .queue-cover {
   width: 64px;
+  height: 64px;
   flex-shrink: 0;
   border-radius: 4px;
   overflow: hidden;
   background: var(--surface2);
   align-self: flex-start;
 }
-.queue-cover img { width: 100%; height: auto; display: block; border-radius: 4px; }
+.queue-cover img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; }
 .cover-placeholder {
-  width: 64px; height: 86px;
+  width: 64px; height: 64px;
   display: flex; align-items: center; justify-content: center;
   background: var(--surface2); font-size: 22px;
 }
