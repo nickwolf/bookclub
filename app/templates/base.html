@@ -20,14 +20,16 @@
       <a href="/history" {% if request.url.path == "/history" %}class="active"{% endif %}>History</a>
     </div>
     <div class="nav-right">
-      <!-- Profile switcher -->
-      <div class="profile-switcher">
-        <a href="/profiles" class="nav-btn profile-chip" title="Manage profiles">
+      <div class="profile-menu" id="profile-menu">
+        <button class="nav-btn profile-chip" onclick="toggleProfileMenu(event)">
           {{ active_profile.name if active_profile else "?" }}
-          {% if all_profiles | length > 1 %}<span class="profile-caret">▾</span>{% endif %}
-        </a>
-        {% if all_profiles | length > 1 %}
+          <span class="profile-caret">▾</span>
+        </button>
         <div class="profile-dropdown">
+          <div class="profile-drop-header">{{ active_profile.name if active_profile else "?" }}</div>
+
+          {% if all_profiles | length > 1 %}
+          <div class="profile-drop-divider"></div>
           {% for p in all_profiles %}
             {% if p.id != (active_profile.id if active_profile else 0) %}
             <form method="post" action="/profiles/switch/{{ p.id }}">
@@ -35,21 +37,26 @@
             </form>
             {% endif %}
           {% endfor %}
-          <a href="/profiles" class="profile-option profile-manage">Manage profiles…</a>
-        </div>
-        {% endif %}
-      </div>
+          {% endif %}
 
-      <a href="/settings" class="nav-btn nav-settings-btn" {% if request.url.path == "/settings" %}style="color:var(--accent)"{% endif %} title="Settings & logs">⚙</a>
-      <a href="/recs/refresh" class="nav-btn nav-recs-btn" title="Generate new recommendations via Claude">✦ Recs</a>
-      <button hx-post="/sync"
-              hx-target="#sync-status"
-              hx-swap="innerHTML"
-              class="nav-btn nav-btn-primary"
-              hx-on::after-request="openSyncPanel()">⟳ Sync</button>
-      <span id="sync-status" hx-swap="innerHTML">
-        {% include "partials/sync_status.html" %}
-      </span>
+          <div class="profile-drop-divider"></div>
+
+          <a href="/recs/refresh" class="profile-option">✦ Generate Recs</a>
+          <button class="profile-option profile-option-sync"
+                  hx-post="/sync"
+                  hx-target="#sync-status"
+                  hx-swap="innerHTML"
+                  hx-on::after-request="openSyncPanel(); closeProfileMenu()">
+            <span>⟳ Sync</span>
+            <span id="sync-status">{% include "partials/sync_status.html" %}</span>
+          </button>
+
+          <div class="profile-drop-divider"></div>
+
+          <a href="/profiles" class="profile-option{% if request.url.path == '/profiles' %} profile-option-active{% endif %}">Users</a>
+          <a href="/settings" class="profile-option{% if request.url.path == '/settings' %} profile-option-active{% endif %}">Settings</a>
+        </div>
+      </div>
     </div>
   </nav>
 
@@ -84,7 +91,22 @@
           }
         });
       }
+
+      // Close profile menu on outside click
+      document.addEventListener('click', e => {
+        const menu = document.getElementById('profile-menu');
+        if (menu && !menu.contains(e.target)) menu.classList.remove('open');
+      });
     });
+
+    function toggleProfileMenu(e) {
+      e.stopPropagation();
+      document.getElementById('profile-menu').classList.toggle('open');
+    }
+
+    function closeProfileMenu() {
+      document.getElementById('profile-menu').classList.remove('open');
+    }
 
     let _syncPollTimer = null;
 
