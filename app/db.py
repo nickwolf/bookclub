@@ -716,6 +716,30 @@ def clear_app_log():
         conn.execute("DELETE FROM app_log")
 
 
+def clear_profile_recommendations(profile_id: int):
+    with db() as conn:
+        conn.execute("DELETE FROM rec_interactions WHERE profile_id = ?", (profile_id,))
+
+
+def clear_profile_playlist(profile_id: int):
+    with db() as conn:
+        conn.execute("UPDATE profiles SET abs_picks_playlist_id = NULL WHERE id = ?", (profile_id,))
+
+
+def clear_profile_ratings(profile_id: int):
+    with db() as conn:
+        conn.execute(
+            "UPDATE rec_interactions SET user_rating = NULL, user_notes = NULL WHERE profile_id = ?",
+            (profile_id,),
+        )
+
+
+def delete_profile(profile_id: int):
+    with db() as conn:
+        conn.execute("DELETE FROM rec_interactions WHERE profile_id = ?", (profile_id,))
+        conn.execute("DELETE FROM profiles WHERE id = ?", (profile_id,))
+
+
 def get_next_review_rec(profile_id: int, skip_ids: list[int] | None = None) -> sqlite3.Row | None:
     skip_ids = skip_ids or []
     skip_params: dict = {}
