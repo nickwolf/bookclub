@@ -4,6 +4,9 @@ A self-hosted book recommendation app for households with shared — or wildly d
 
 Syncs your reading history from [Hardcover](https://hardcover.app), cross-references it with your [Audiobookshelf](https://www.audiobookshelf.org) library, and uses the [Claude AI API](https://www.anthropic.com) to generate personalized recommendations for each person in your household. Each user gets their own queue, ratings, and notes — recommendations are shared but interactions are independent.
 
+![Recommendations page — light theme](docs/screenshots/recs-light.png)
+![Reading queue — dark theme](docs/screenshots/queue-dark.png)
+
 ---
 
 ## Features
