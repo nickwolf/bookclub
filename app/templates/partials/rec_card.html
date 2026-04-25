@@ -1,15 +1,21 @@
 {% set status = rec.user_status %}
+{% set tags = rec.tags.split(', ') if rec.tags else [] %}
 <div class="rec-card status-{{ status }}" id="rec-{{ rec.id }}">
 
-  <div class="rec-cover rec-detail-trigger"
-       hx-get="/rec/{{ rec.id }}/detail"
-       hx-target="#modal"
-       hx-swap="innerHTML"
-       title="View details">
-    {% if rec.cover_url %}
-      <img src="{{ rec.cover_url }}" alt="" loading="lazy">
-    {% else %}
-      <span class="rec-cover-placeholder">📖</span>
+  <div class="rec-cover-slot">
+    <div class="rec-cover rec-detail-trigger"
+         hx-get="/rec/{{ rec.id }}/detail"
+         hx-target="#modal"
+         hx-swap="innerHTML"
+         title="View details">
+      {% if rec.cover_url %}
+        <img src="{{ rec.cover_url }}" alt="" loading="lazy">
+      {% else %}
+        <span class="rec-cover-placeholder">📖</span>
+      {% endif %}
+    </div>
+    {% if rec.audiobook_available == "Yes" %}
+      <span class="rec-cover-audio-label">Audio</span>
     {% endif %}
   </div>
 
@@ -22,12 +28,11 @@
           title="View details">{{ rec.title }}</h3>
       <div class="rec-meta">
         <span class="rec-author">{{ rec.author or "Unknown" }}</span>
-        {% if rec.series %}<span class="rec-series">· {{ rec.series }}</span>{% endif %}
+        {% if rec.series %}<span class="rec-series"> · {{ rec.series }}</span>{% endif %}
       </div>
     </div>
 
     <div class="rec-badges">
-      <span class="badge type-badge">{{ rec.type }}</span>
       {% if rec.confidence %}
         <span class="badge confidence-badge" title="AI confidence score">{{ rec.confidence }}% match</span>
       {% endif %}
@@ -42,18 +47,19 @@
       {% elif rec.abs_progress and rec.abs_progress > 0.05 %}
         <span class="badge in-progress">{{ (rec.abs_progress * 100) | int }}%</span>
       {% endif %}
-      {% if rec.audiobook_available == "Yes" %}
-        <span class="badge audio-yes">🎧 Audio</span>
-      {% elif rec.audiobook_available == "Partial" %}
-        <span class="badge audio-partial">🎧 Partial</span>
+      {% if rec.audiobook_available == "Partial" %}
+        <span class="badge audio-partial">Partial Audio</span>
       {% endif %}
     </div>
 
-    {% if rec.tags %}
-    <div class="rec-tags">
-      {% for tag in rec.tags.split(', ') %}
-        <span class="rec-tag">{{ tag }}</span>
+    {% if tags %}
+    <div class="rec-tags" data-extra="{{ [tags|length - 2, 0]|max }}">
+      {% for tag in tags %}
+        <span class="rec-tag{% if loop.index > 2 %} rec-tag-extra{% endif %}">{{ tag }}</span>
       {% endfor %}
+      {% if tags|length > 2 %}
+        <button type="button" class="tag-expand-btn">+{{ tags|length - 2 }} more</button>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -67,17 +73,17 @@
                 hx-post="/rec/{{ rec.id }}/queue"
                 hx-target="#rec-{{ rec.id }}"
                 hx-swap="outerHTML">+ Queue</button>
-        <button class="btn btn-pass"
-                hx-post="/rec/{{ rec.id }}/pass"
-                hx-target="#rec-{{ rec.id }}"
-                hx-swap="outerHTML">Pass</button>
         <button class="btn btn-read"
                 hx-post="/rec/{{ rec.id }}/read"
                 hx-target="#rec-{{ rec.id }}"
                 hx-swap="outerHTML">Already Read</button>
+        <button class="btn btn-pass"
+                hx-post="/rec/{{ rec.id }}/pass"
+                hx-target="#rec-{{ rec.id }}"
+                hx-swap="outerHTML">Pass</button>
 
       {% elif status == "queued" %}
-        <span class="status-label queued">📋 Queued #{{ rec.queue_pos }}</span>
+        <span class="status-label queued">Queued #{{ rec.queue_pos }}</span>
         <button class="btn btn-read"
                 hx-post="/rec/{{ rec.id }}/read"
                 hx-target="#rec-{{ rec.id }}"
@@ -88,7 +94,7 @@
                 hx-swap="outerHTML">Remove</button>
 
       {% elif status == "pass" %}
-        <span class="status-label pass">✗ Passed</span>
+        <span class="status-label pass">Passed</span>
         <button class="btn btn-unpass"
                 hx-post="/rec/{{ rec.id }}/unpass"
                 hx-target="#rec-{{ rec.id }}"
@@ -122,7 +128,10 @@
                 class="rec-notes-input"
                 placeholder="Notes for AI context (why you passed, what you liked, etc.)…"
                 rows="2">{{ rec.user_notes or "" }}</textarea>
-      <span id="note-status-{{ rec.id }}" class="note-status"></span>
+      <div class="note-footer">
+        <button type="submit" class="btn rec-notes-save">Save</button>
+        <span id="note-status-{{ rec.id }}" class="note-status"></span>
+      </div>
     </form>
     {% endif %}
   </div>

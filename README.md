@@ -35,6 +35,8 @@ Syncs your reading history from [Hardcover](https://hardcover.app), cross-refere
 - Rating queue to catch up on unrated Hardcover books and read recommendations
 - Full read history with search and rating filter, paginated at 50 per page
 - Real-time sync log panel (pure `fetch()` polling — no browser spinner)
+- Light and dark theme with toggle — persisted per browser via `localStorage`
+- Danger Zone in Settings: clear recommendations, ratings, ABS playlist, or delete a profile entirely
 - SQLite in WAL mode — reads never block writes
 
 ---
@@ -46,6 +48,7 @@ Syncs your reading history from [Hardcover](https://hardcover.app), cross-refere
 | Web framework | FastAPI |
 | Templates | Jinja2 — server-rendered, no build step |
 | Interactivity | HTMX + SortableJS |
+| Fonts | Georgia (titles) · DM Sans (UI chrome) |
 | Database | SQLite (WAL mode) |
 | Container | Docker (`python:3.11-slim`) |
 | AI | Anthropic API (`claude-sonnet-4-6` by default) |

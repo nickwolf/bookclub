@@ -15,7 +15,10 @@
 
   {% set forced_rate = rec.user_status == 'read' and not rec.user_rating %}
 
-  <div class="review-progress">{{ remaining }} remaining</div>
+  <div class="review-progress">
+    <span>Pending recommendations</span>
+    <span>{{ remaining }} remaining</span>
+  </div>
 
   <div class="review-card">
     <div class="review-cover">
@@ -126,7 +129,10 @@
                   title="Skip (S)">Skip</button>
         </div>
         <div class="review-kbd-hint">
-          <span>Q</span> queue &nbsp; <span>P</span> pass &nbsp; <span>R</span> read &nbsp; <span>S</span> skip
+          <span><span>Q</span> queue</span>
+          <span><span>P</span> pass</span>
+          <span><span>R</span> read</span>
+          <span><span>S</span> skip</span>
         </div>
       {% endif %}
 

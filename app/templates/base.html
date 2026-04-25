@@ -5,7 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Bookclub{% endblock %}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    (function(){
+      var t = localStorage.getItem('bc_theme') || 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
 </head>
@@ -20,6 +29,7 @@
       <a href="/history" {% if request.url.path == "/history" %}class="active"{% endif %}>History</a>
     </div>
     <div class="nav-right">
+      <button class="nav-theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">◑</button>
       <div class="profile-menu" id="profile-menu">
         <button class="nav-btn profile-chip" onclick="toggleProfileMenu(event)">
           {{ active_profile.name if active_profile else "?" }}
@@ -106,6 +116,23 @@
     function closeProfileMenu() {
       document.getElementById('profile-menu').classList.remove('open');
     }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.dataset.theme === 'dark';
+      const next = isDark ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('bc_theme', next);
+    }
+
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('tag-expand-btn')) {
+        const tags = e.target.closest('.rec-tags');
+        if (!tags) return;
+        const expanded = tags.classList.toggle('expanded');
+        const extra = tags.dataset.extra;
+        e.target.textContent = expanded ? 'less' : '+' + extra + ' more';
+      }
+    });
 
     let _syncPollTimer = null;
 
