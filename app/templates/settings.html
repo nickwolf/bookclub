@@ -6,97 +6,229 @@
   <h1>Settings</h1>
 </div>
 
-<div class="settings-grid">
+<div class="filter-tabs">
+  <a href="#users"  class="filter-tab" data-tab="users">Users</a>
+  <a href="#sync"   class="filter-tab" data-tab="sync">Sync History</a>
+  <a href="#log"    class="filter-tab" data-tab="log">App Log</a>
+  <a href="#danger" class="filter-tab" data-tab="danger">Danger Zone</a>
+</div>
 
-  <!-- Sync history -->
-  <section class="settings-card">
-    <h2>Sync history</h2>
-    {% if sync_history %}
-    <table class="log-table">
-      <thead>
-        <tr><th>Time</th><th>HC</th><th>ABS</th><th>Status</th><th>Message</th></tr>
-      </thead>
-      <tbody>
-        {% for s in sync_history %}
-        <tr class="log-row-{{ s.status }}">
-          <td class="log-time">{{ s.started_at[:16] | replace("T"," ") }}</td>
-          <td>{{ s.hc_synced }}</td>
-          <td>{{ s.abs_synced }}</td>
-          <td><span class="log-badge log-{{ s.status }}">{{ s.status }}</span></td>
-          <td class="log-detail">{{ s.message or "" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p class="empty">No syncs recorded yet.</p>
-    {% endif %}
-  </section>
+<!-- ── Users ───────────────────────────────────────────── -->
+<div id="tab-users" class="settings-tab-panel">
 
-  <!-- App log -->
-  <section class="settings-card">
-    <div class="settings-card-header">
-      <h2>Application log</h2>
-      <button class="btn btn-pass"
-              hx-post="/settings/log/clear"
-              hx-target="#app-log-body"
-              hx-swap="innerHTML"
-              hx-confirm="Clear all log entries?">Clear</button>
-    </div>
-    <table class="log-table">
-      <thead>
-        <tr><th>Time</th><th>Component</th><th>Level</th><th>Message</th></tr>
-      </thead>
-      <tbody id="app-log-body">
-        {% if app_log %}
-          {% for entry in app_log %}
-          <tr>
-            <td class="log-time">{{ entry.created_at[:16] | replace("T"," ") }}</td>
-            <td><span class="log-component">{{ entry.component }}</span></td>
-            <td><span class="log-badge log-{{ entry.level }}">{{ entry.level }}</span></td>
-            <td class="log-msg">
-              {{ entry.message }}
-              {% if entry.detail %}
-                <div class="log-detail-text">{{ entry.detail }}</div>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        {% else %}
-          <tr><td colspan="4" class="empty">No log entries yet.</td></tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </section>
+  <table class="users-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>ABS</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in all_profiles %}
+      <tr class="user-row {% if active_profile and p.id == active_profile.id %}user-row-active{% endif %}">
+        <td class="user-name">{{ p.name }}</td>
+        <td class="user-abs">
+          {% if p.abs_token %}
+            <span class="user-abs-ok" title="API token configured">✓</span>
+            {% if p.abs_picks_playlist_id %}<span class="user-abs-playlist" title="Picks playlist linked">playlist</span>{% endif %}
+          {% else %}
+            <span class="user-abs-none">—</span>
+          {% endif %}
+        </td>
+        <td class="user-status">
+          {% if active_profile and p.id == active_profile.id %}
+            <span class="badge">Active</span>
+          {% else %}
+            <form method="post" action="/profiles/switch/{{ p.id }}">
+              <button type="submit" class="btn btn-sm">Switch</button>
+            </form>
+          {% endif %}
+        </td>
+        <td class="user-actions">
+          <button class="btn btn-sm"
+                  onclick="toggleUserEdit({{ p.id }})"
+                  id="user-edit-toggle-{{ p.id }}">Configure</button>
+        </td>
+      </tr>
+      <tr class="user-edit-row" id="user-edit-{{ p.id }}">
+        <td colspan="4">
+          <div class="user-edit-panel">
 
-  <!-- Danger zone -->
-  <section class="settings-card settings-danger-card">
-    <h2>Danger zone</h2>
-    <p class="settings-danger-note">These actions affect the active profile (<strong>{{ active_profile.name if active_profile else "?" }}</strong>) and cannot be undone.</p>
-    <div class="settings-danger-actions">
-      <form method="post" action="/settings/clear/recommendations"
-            onsubmit="return confirm('Delete all recommendations and queue for this profile? This cannot be undone.')">
-        <button class="btn btn-danger" type="submit">Delete recommendations &amp; queue</button>
-        <span class="settings-danger-desc">Clears all rec interactions and queue entries for this profile.</span>
-      </form>
-      <form method="post" action="/settings/clear/ratings"
-            onsubmit="return confirm('Clear all ratings and notes for this profile? This cannot be undone.')">
-        <button class="btn btn-danger" type="submit">Clear rating history</button>
-        <span class="settings-danger-desc">Removes all star ratings and notes from rec interactions.</span>
-      </form>
-      <form method="post" action="/settings/clear/playlist"
-            onsubmit="return confirm('Unlink the ABS picks playlist for this profile?')">
-        <button class="btn btn-danger" type="submit">Unlink ABS playlist</button>
-        <span class="settings-danger-desc">Clears the saved Audiobookshelf picks playlist ID for this profile.</span>
-      </form>
-      <form method="post" action="/settings/delete-profile"
-            onsubmit="return confirm('Permanently delete this profile and all its data? This cannot be undone.')">
-        <button class="btn btn-danger btn-danger-strong" type="submit">Delete profile</button>
-        <span class="settings-danger-desc">Deletes the profile and all associated recommendations, ratings, and queue data.</span>
-      </form>
-    </div>
-  </section>
+            <div class="user-edit-section">
+              <div class="pref-label">AI recommendation preferences</div>
+              <form hx-post="/profiles/{{ p.id }}/preferences"
+                    hx-target="#pref-status-{{ p.id }}"
+                    hx-swap="innerHTML"
+                    hx-trigger="blur from:find textarea"
+                    class="pref-form">
+                <textarea name="preferences"
+                          class="pref-input"
+                          placeholder="e.g. I prefer long series over standalones, love fast-paced progression fantasy…"
+                          rows="4">{{ p.preferences or "" }}</textarea>
+                <div class="note-footer">
+                  <button type="submit" class="btn rec-notes-save">Save</button>
+                  <span id="pref-status-{{ p.id }}" class="note-status"></span>
+                </div>
+              </form>
+            </div>
+
+            <div class="user-edit-section">
+              <div class="pref-label">
+                Audiobookshelf API token
+                <span class="pref-hint">ABS → Settings → Users → your account → API Token</span>
+              </div>
+              <form hx-post="/profiles/{{ p.id }}/abs-token"
+                    hx-target="#abs-token-status-{{ p.id }}"
+                    hx-swap="innerHTML"
+                    class="pref-form">
+                <div class="abs-token-row">
+                  <input type="password"
+                         name="abs_token"
+                         class="pref-input abs-token-input"
+                         placeholder="eyJhbGci…"
+                         value="{{ p.abs_token or '' }}"
+                         autocomplete="off">
+                  <button type="submit" class="btn rec-notes-save">Save</button>
+                </div>
+                {% if p.abs_picks_playlist_id %}
+                  <div class="abs-token-linked">Bookclub Picks playlist linked ✓</div>
+                {% endif %}
+                <span id="abs-token-status-{{ p.id }}" class="note-status"></span>
+              </form>
+            </div>
+
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="users-add">
+    <form method="post" action="/profiles" class="new-profile-form">
+      <input type="text" name="name" placeholder="New user name" required maxlength="50" class="profile-name-input">
+      <button type="submit" class="btn btn-queue">Add User</button>
+    </form>
+  </div>
 
 </div>
+
+<!-- ── Sync History ─────────────────────────────────────── -->
+<div id="tab-sync" class="settings-tab-panel" hidden>
+  {% if sync_history %}
+  <table class="log-table">
+    <thead>
+      <tr><th>Time</th><th>HC</th><th>ABS</th><th>Status</th><th>Message</th></tr>
+    </thead>
+    <tbody>
+      {% for s in sync_history %}
+      <tr class="log-row-{{ s.status }}">
+        <td class="log-time">{{ s.started_at[:16] | replace("T"," ") }}</td>
+        <td>{{ s.hc_synced }}</td>
+        <td>{{ s.abs_synced }}</td>
+        <td><span class="log-badge log-{{ s.status }}">{{ s.status }}</span></td>
+        <td class="log-detail">{{ s.message or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No syncs recorded yet.</p>
+  {% endif %}
+</div>
+
+<!-- ── App Log ──────────────────────────────────────────── -->
+<div id="tab-log" class="settings-tab-panel" hidden>
+  <div class="settings-card-header" style="margin-bottom:12px">
+    <span></span>
+    <button class="btn btn-pass"
+            hx-post="/settings/log/clear"
+            hx-target="#app-log-body"
+            hx-swap="innerHTML"
+            hx-confirm="Clear all log entries?">Clear log</button>
+  </div>
+  <table class="log-table">
+    <thead>
+      <tr><th>Time</th><th>Component</th><th>Level</th><th>Message</th></tr>
+    </thead>
+    <tbody id="app-log-body">
+      {% if app_log %}
+        {% for entry in app_log %}
+        <tr>
+          <td class="log-time">{{ entry.created_at[:16] | replace("T"," ") }}</td>
+          <td><span class="log-component">{{ entry.component }}</span></td>
+          <td><span class="log-badge log-{{ entry.level }}">{{ entry.level }}</span></td>
+          <td class="log-msg">
+            {{ entry.message }}
+            {% if entry.detail %}
+              <div class="log-detail-text">{{ entry.detail }}</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="4" class="empty">No log entries yet.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Danger Zone ──────────────────────────────────────── -->
+<div id="tab-danger" class="settings-tab-panel" hidden>
+  <p class="settings-danger-note">These actions affect the active user (<strong>{{ active_profile.name if active_profile else "?" }}</strong>) and cannot be undone.</p>
+  <div class="settings-danger-actions">
+    <form method="post" action="/settings/clear/recommendations"
+          onsubmit="return confirm('Delete all recommendations and queue for this user? This cannot be undone.')">
+      <button class="btn btn-danger" type="submit">Delete recommendations &amp; queue</button>
+      <span class="settings-danger-desc">Clears all rec interactions and queue entries for this user.</span>
+    </form>
+    <form method="post" action="/settings/clear/ratings"
+          onsubmit="return confirm('Clear all ratings and notes for this user? This cannot be undone.')">
+      <button class="btn btn-danger" type="submit">Clear rating history</button>
+      <span class="settings-danger-desc">Removes all star ratings and notes from rec interactions.</span>
+    </form>
+    <form method="post" action="/settings/clear/playlist"
+          onsubmit="return confirm('Unlink the ABS picks playlist for this user?')">
+      <button class="btn btn-danger" type="submit">Unlink ABS playlist</button>
+      <span class="settings-danger-desc">Clears the saved Audiobookshelf picks playlist ID for this user.</span>
+    </form>
+    <form method="post" action="/settings/delete-profile"
+          onsubmit="return confirm('Permanently delete this user and all their data? This cannot be undone.')">
+      <button class="btn btn-danger btn-danger-strong" type="submit">Delete user</button>
+      <span class="settings-danger-desc">Deletes the user and all associated recommendations, ratings, and queue data.</span>
+    </form>
+  </div>
+</div>
+
+<script>
+  function activateSettingsTab(name) {
+    document.querySelectorAll('.filter-tab[data-tab]').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === name)
+    );
+    document.querySelectorAll('.settings-tab-panel').forEach(p => {
+      p.hidden = p.id !== 'tab-' + name;
+    });
+  }
+
+  document.querySelectorAll('.filter-tab[data-tab]').forEach(t => {
+    t.addEventListener('click', e => {
+      e.preventDefault();
+      history.replaceState(null, '', '/settings#' + t.dataset.tab);
+      activateSettingsTab(t.dataset.tab);
+    });
+  });
+
+  function toggleUserEdit(id) {
+    const row = document.getElementById('user-edit-' + id);
+    const btn = document.getElementById('user-edit-toggle-' + id);
+    const open = row.classList.toggle('open');
+    btn.textContent = open ? 'Done' : 'Configure';
+  }
+
+  const initTab = location.hash.replace('#', '') || 'users';
+  activateSettingsTab(initTab);
+</script>
 
 {% endblock %}
