@@ -284,18 +284,18 @@ def history_page(request: Request, q: str = "", rating: str = "", page: int = 1)
 # Profiles
 # ---------------------------------------------------------------------------
 
-@app.get("/profiles", response_class=HTMLResponse)
-def profiles_page(request: Request):
-    return _tmpl(request, "profiles.html")
+@app.get("/profiles")
+def profiles_redirect():
+    return RedirectResponse("/settings", status_code=301)
 
 
 @app.post("/profiles")
 def create_profile_route(request: Request, name: str = Form(...)):
     name = name.strip()
     if not name:
-        return RedirectResponse("/profiles", status_code=303)
+        return RedirectResponse("/settings", status_code=303)
     pid = db.create_profile(name)
-    resp = RedirectResponse("/profiles", status_code=303)
+    resp = RedirectResponse("/settings", status_code=303)
     resp.set_cookie("profile_id", str(pid), max_age=365 * 24 * 3600)
     return resp
 
@@ -313,7 +313,7 @@ def save_preferences(profile_id: int, request: Request, preferences: str = Form(
     db.update_profile_preferences(profile_id, preferences)
     if request.headers.get("HX-Request"):
         return HTMLResponse('<span class="save-ok">Saved ✓</span>')
-    return RedirectResponse("/profiles", status_code=303)
+    return RedirectResponse("/settings", status_code=303)
 
 
 @app.post("/profiles/{profile_id}/abs-token")
@@ -323,7 +323,7 @@ def save_abs_token(profile_id: int, request: Request, abs_token: str = Form(""))
     db.update_profile_picks_playlist_id(profile_id, None)
     if request.headers.get("HX-Request"):
         return HTMLResponse('<span class="save-ok">Saved ✓</span>')
-    return RedirectResponse("/profiles", status_code=303)
+    return RedirectResponse("/settings", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -684,6 +684,6 @@ def clear_ratings(request: Request):
 def delete_profile(request: Request):
     pid = get_profile_id(request)
     db.delete_profile(pid)
-    response = RedirectResponse("/profiles", status_code=303)
+    response = RedirectResponse("/settings", status_code=303)
     response.delete_cookie("profile_id")
     return response
