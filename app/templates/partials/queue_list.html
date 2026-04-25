@@ -5,6 +5,7 @@
       data-rec-id="{{ item.rec_id }}" data-queue-id="{{ item.id }}">
 
     <span class="drag-handle">⠿</span>
+    <span class="queue-pos">{{ loop.index }}</span>
 
     <div class="queue-cover"
          hx-get="/rec/{{ item.rec_id }}/detail"
