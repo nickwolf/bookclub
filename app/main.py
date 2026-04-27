@@ -663,27 +663,27 @@ def clear_log(request: Request):
 def clear_recommendations(request: Request):
     pid = get_profile_id(request)
     db.clear_profile_recommendations(pid)
-    return RedirectResponse("/settings", status_code=303)
+    return RedirectResponse("/settings#danger", status_code=303)
 
 
 @app.post("/settings/clear/playlist")
 def clear_playlist(request: Request):
     pid = get_profile_id(request)
     db.clear_profile_playlist(pid)
-    return RedirectResponse("/settings", status_code=303)
+    return RedirectResponse("/settings#danger", status_code=303)
 
 
 @app.post("/settings/clear/ratings")
 def clear_ratings(request: Request):
     pid = get_profile_id(request)
     db.clear_profile_ratings(pid)
-    return RedirectResponse("/settings", status_code=303)
+    return RedirectResponse("/settings#danger", status_code=303)
 
 
 @app.post("/settings/delete-profile")
 def delete_profile(request: Request):
     pid = get_profile_id(request)
     db.delete_profile(pid)
-    response = RedirectResponse("/settings", status_code=303)
+    response = RedirectResponse("/settings#danger", status_code=303)
     response.delete_cookie("profile_id")
     return response

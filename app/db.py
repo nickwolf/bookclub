@@ -718,7 +718,8 @@ def clear_app_log():
 
 def clear_profile_recommendations(profile_id: int):
     with db() as conn:
-        conn.execute("DELETE FROM rec_interactions WHERE profile_id = ?", (profile_id,))
+        conn.execute("DELETE FROM recommendations")
+        # ON DELETE CASCADE removes rec_interactions and queue rows automatically
 
 
 def clear_profile_playlist(profile_id: int):
@@ -736,6 +737,7 @@ def clear_profile_ratings(profile_id: int):
 
 def delete_profile(profile_id: int):
     with db() as conn:
+        conn.execute("DELETE FROM queue WHERE profile_id = ?", (profile_id,))
         conn.execute("DELETE FROM rec_interactions WHERE profile_id = ?", (profile_id,))
         conn.execute("DELETE FROM profiles WHERE id = ?", (profile_id,))
 
