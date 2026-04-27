@@ -136,8 +136,8 @@ rec_interactions (
 
 queue (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  profile_id  INTEGER NOT NULL REFERENCES profiles(id),
-  rec_id      INTEGER NOT NULL REFERENCES recommendations(id),
+  profile_id  INTEGER NOT NULL REFERENCES profiles(id),   -- no ON DELETE CASCADE; delete queue rows before deleting a profile
+  rec_id      INTEGER NOT NULL REFERENCES recommendations(id) ON DELETE CASCADE,
   position    INTEGER NOT NULL,
   added_at    DATETIME
 )
@@ -189,6 +189,16 @@ _REC_JOINS = """
     LEFT JOIN hc_books h          ON h.id = r.hc_book_id
 """
 ```
+
+### Shared vs. per-profile data
+
+`recommendations` is a **global catalog** — not owned by any profile. AI-generated and ABS-playlist recs all live here. "Clearing recommendations" means `DELETE FROM recommendations`; cascade removes all `rec_interactions` and `queue` rows automatically.
+
+Per-profile state is split across two tables:
+- `rec_interactions` — status (pending/queued/pass/read), rating, notes
+- `queue` — ordered reading queue
+
+"Deleting a user" means deleting their `queue` rows, then `rec_interactions` rows, then the `profiles` row. Order matters: `queue.profile_id` has no `ON DELETE CASCADE`, so the profile row cannot be deleted while queue rows referencing it still exist.
 
 ### Timestamps
 
