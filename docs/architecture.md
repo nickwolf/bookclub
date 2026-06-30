@@ -192,11 +192,13 @@ _REC_JOINS = """
 
 ### Shared vs. per-profile data
 
-`recommendations` is a **global catalog** — not owned by any profile. AI-generated and ABS-playlist recs all live here. "Clearing recommendations" means `DELETE FROM recommendations`; cascade removes all `rec_interactions` and `queue` rows automatically.
+`recommendations` is a **global catalog** — not owned by any profile. AI-generated and ABS-playlist recs all live here.
 
 Per-profile state is split across two tables:
 - `rec_interactions` — status (pending/queued/pass/read), rating, notes
 - `queue` — ordered reading queue
+
+"Clearing a user's recommendations" means deleting their `queue` rows and `rec_interactions` rows — the global `recommendations` catalog is left intact so other profiles are unaffected.
 
 "Deleting a user" means deleting their `queue` rows, then `rec_interactions` rows, then the `profiles` row. Order matters: `queue.profile_id` has no `ON DELETE CASCADE`, so the profile row cannot be deleted while queue rows referencing it still exist.
 

@@ -195,3 +195,37 @@ The database is on a named volume and is not affected by rebuilds.
 | `TZ` | No | `UTC` | Timezone for displayed timestamps |
 | `DB_PATH` | No | `/data/bookclub.db` | SQLite DB path inside container |
 | `ABS_DB_PATH` | No | `/abs_config/absdatabase.sqlite` | ABS DB path inside container |
+
+---
+
+## Known Gotchas
+
+### ABS inter-container networking
+Bookclub cannot reach ABS by container name (different Docker networks). Use the Docker host gateway IP `192.168.144.1` instead (discoverable via `/proc/net/route` inside the container). ABS API is at `192.168.144.1:13378`.
+
+### ABS cover images
+Served via a proxy endpoint (`GET /abs/cover/{item_id}`) — fetches from ABS API with Bearer token and caches 86400s. The browser can't reach ABS directly, and the cover path is inside the ABS container's filesystem.
+
+### ABS playlist PATCH is broken
+`PATCH /api/playlists/{id}` with `{"items": [...]}` always returns `400 Invalid playlist items. Length mismatch` even for valid library item IDs. Workaround: DELETE the playlist and POST a new one with items in the creation body — this works reliably. Update the cached playlist ID after each rebuild. Playlist item format: `{"libraryItemId": "...", "episodeId": null}`.
+
+### SQL reserved word `order`
+ABS SQLite schema uses `order` as a column name in `playlistMediaItems`. Must quote it as `pmi."order"` in queries.
+
+### HTMX polling — browser tab spinner
+HTMX uses XHR which triggers the browser's native loading indicator on every poll. For background polling (sync log panel), use plain `fetch()` in JS instead. Pattern: `setInterval(() => fetch('/endpoint').then(r => r.json()).then(updateUI), 2000)`, clear interval when done.
+
+### HTMX `hx-swap="outerHTML"` + `hx-on` events
+After an element replaces itself via outerHTML, `hx-on` event handlers on that element don't fire reliably (old element is gone). Use a document-level event listener instead.
+
+### Claude API duplicate recommendations
+When asking Claude for a list with "do NOT repeat" constraints, it sometimes includes a duplicate and puts self-correction text in the `reason` field. Fix: (1) prompt explicitly says to silently skip duplicates and never put meta-commentary in `reason`; (2) deduplicate the returned list in code against existing DB titles before upserting.
+
+### `_sync_running` race condition
+Setting `_sync_running = True` inside the background thread means the flag isn't set when the POST handler returns — the UI sees `running=False` immediately after POST. Fix: set `_sync_running = True` in the route handler before scheduling the background task.
+
+### Hardcover rate limiting
+HC API returns 429 if synced too rapidly. Don't trigger multiple syncs in quick succession during development.
+
+### `recommendations` table is shared (not per-profile)
+All AI and ABS-playlist recs live in `recommendations` globally. Per-profile interaction state lives in `rec_interactions`. Per-profile ordering lives in `queue`. "Clearing a user's recs" means deleting their `queue` + `rec_interactions` rows — do NOT delete from `recommendations` (that would wipe all users' data). "Deleting a user" means deleting their `queue` + `rec_interactions` + `profiles` row only.
