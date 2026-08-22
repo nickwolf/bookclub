@@ -2,13 +2,6 @@
 
 A personal book recommendation app — syncs reading history from Hardcover and audiobook library from Audiobookshelf, then uses the Anthropic API to generate tailored recommendations per reader profile.
 
-## Stack
-
-- **Backend:** FastAPI (Python) + SQLite + Jinja2 templates
-- **Frontend:** HTMX for partial updates, vanilla JS for polling/interactions
-- **AI:** Anthropic API (`gen.py`) — in-container generation; `scripts/refresh_recs.py` is the legacy host-side alternative
-- **Container:** Docker, named volume `bookclub_data` for the SQLite DB
-
 ## Key Docs
 
 All reference material lives in `docs/`:
