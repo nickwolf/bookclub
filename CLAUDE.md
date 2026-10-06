@@ -13,6 +13,7 @@ All reference material lives in `docs/`:
 | `docs/design-system.md` | CSS tokens, typography, theme switching, layout decisions |
 | `docs/product-requirements.md` | Feature spec and intended behavior |
 | `docs/user-guide.md` | End-user documentation |
+| `docs/ROADMAP.md` | Where the ranked backlog lives (GitHub board + `backlog` label) |
 
 **Read `docs/ops-runbook.md` → "Known Gotchas" before touching sync, HTMX, or the ABS integration.**
 
