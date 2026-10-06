@@ -53,7 +53,7 @@ Syncs your reading history from [Hardcover](https://hardcover.app), cross-refere
 | Interactivity | HTMX + SortableJS |
 | Fonts | Georgia (titles) · DM Sans (UI chrome) |
 | Database | SQLite (WAL mode) |
-| Container | Docker (`python:3.11-slim`) |
+| Container | Docker (`python:3.12-slim`, published to GHCR) |
 | AI | Anthropic API (`claude-sonnet-4-6` by default) |
 | External book data | Hardcover GraphQL API |
 | Cover art | Hardcover (primary) · Open Library API (fallback) |
@@ -83,8 +83,8 @@ docker volume create bookclub_data
 cp .env.example .env
 # Edit .env — at minimum set HARDCOVER_TOKEN and ANTHROPIC_API_KEY
 
-# 4. Build and start
-docker compose up -d --build
+# 4. Start (pulls ghcr.io/nickwolf/bookclub)
+docker compose up -d
 
 # 5. Open http://localhost:8585
 ```
@@ -95,7 +95,19 @@ Then click **⟳ Sync** to pull in your Hardcover data, and **↺ Recs** to gene
 
 Set `ABS_URL` and `ABS_TOKEN` in `.env`. Then edit the `audiobookshelf_config` volume in `docker-compose.yml` to point at your existing ABS volume (instructions are in the comments at the bottom of the file). Make sure the volume name matches what your ABS container uses.
 
-For the `ABS_URL`, use your Docker bridge gateway IP (e.g. `http://192.168.x.x:13378`), not `localhost` — containers can't reach each other via localhost. See the [ops runbook](docs/ops-runbook.md) for details.
+For the `ABS_URL`, use your host's LAN address (e.g. `http://192.168.x.x:13378`), not `localhost` (containers can't reach each other via localhost) and not a Docker bridge gateway IP (it changes when the network is recreated). See the [ops runbook](docs/ops-runbook.md) for details.
+
+### Updates
+
+Each tagged release is published to GHCR as `ghcr.io/nickwolf/bookclub` with `X.Y.Z`, `X.Y` and `latest` tags. The default compose file runs `latest` and is labelled for [Watchtower](https://containrrr.dev/watchtower/), so a Watchtower install picks up new releases automatically. To stay on a minor line, set `BOOKCLUB_IMAGE_TAG=0.2` in `.env`. Without Watchtower, update with `docker compose pull && docker compose up -d`.
+
+### Development
+
+Build from source with the dev overlay, which bind-mounts `./app` and tags the local image `bookclub-dev`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
 
 ---
 
