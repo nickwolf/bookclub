@@ -339,26 +339,35 @@ def _verify_recs(recs: list) -> list:
             if i:
                 sync._sleep(VERIFY_PAUSE)
             try:
-                match = sync.search_hc_book(client, rec.get("title") or "", rec.get("author"))
+                title, author = rec.get("title") or "", rec.get("author")
+                match = sync.search_hc_book(client, title, author)
+                series_match = None
+                if match is None and rec.get("type") == "Series":
+                    sync._sleep(VERIFY_PAUSE)
+                    series_match = sync.search_hc_series(client, title, author)
             except Exception as e:
                 db.log("gen", f"Hardcover verification failed, keeping the rest unverified: {e!r}",
                        level="warning")
                 failed = True
                 out.append(rec)
                 continue
-            if match is None:
+            if series_match:
+                out.append({**rec, "title": series_match["title"],
+                            "author": series_match["author"],
+                            "series": series_match["title"]})
+            elif match is None:
                 db.log("gen", f"Dropped, not found on Hardcover: {rec.get('title')} "
                               f"by {rec.get('author')}", level="info")
-                continue
-            out.append({
-                **rec,
-                "title": match["title"],
-                "author": match["author"],
-                "series": match["series"] or rec.get("series"),
-                "hardcover_id": match["hardcover_id"],
-                "series_pos": match["series_pos"],
-                "cover_url": match["cover_url"],
-            })
+            else:
+                out.append({
+                    **rec,
+                    "title": match["title"],
+                    "author": match["author"],
+                    "series": match["series"] or rec.get("series"),
+                    "hardcover_id": match["hardcover_id"],
+                    "series_pos": match["series_pos"],
+                    "cover_url": match["cover_url"],
+                })
     return out
 
 

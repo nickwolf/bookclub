@@ -128,7 +128,7 @@ def run(monkeypatch, test_db):
     def go(recs, responses):
         monkeypatch.setattr(gen, "_client", lambda: FakeClient(_msg([_text(recs)])))
         real = httpx.Client
-        client = _search_client(responses)
+        client = _search_client(responses, getattr(go, "seen", None))
         monkeypatch.setattr(gen.httpx, "Client", lambda **kw: client)
         try:
             return gen.run_generation(1, len(recs))
@@ -217,6 +217,60 @@ def test_link_recs_to_hc_exact_by_id(test_db):
     with test_db.db() as conn:
         assert conn.execute("SELECT hc_book_id FROM recommendations WHERE id = ?",
                             (rid,)).fetchone()[0] == 50
+
+
+def _sdoc(id_, name, author, readers=1):
+    return {"document": {"id": str(id_), "name": name, "author_name": author,
+                         "readers_count": readers}}
+
+
+STORM = [
+    _sdoc(257571, "Cosmere Roleplaying Game", "Lydia Suen", 6),
+    _sdoc(997, "The Stormlight Archive", "Brandon Sanderson", 25043),
+    _sdoc(282411, "The Stormlight Archive (Split Volume Edition)", "Brandon Sanderson", 946),
+]
+
+
+def _series_rec(title="The Stormlight Archive", author="Brandon Sanderson"):
+    return _rec(title, author=author, type="Series")
+
+
+def test_series_search_picks_most_read_and_rejects_decoy(hc):
+    seen = []
+    m = sync.search_hc_series(_search_client([STORM], seen), "The Stormlight Archive",
+                              "Brandon Sanderson")
+    assert m == {"title": "The Stormlight Archive", "author": "Brandon Sanderson"}
+    assert seen[0]["variables"]["t"] == "Series"
+    only_decoy = _search_client([[STORM[0]]])
+    assert sync.search_hc_series(only_decoy, "The Stormlight Archive", "Brandon Sanderson") is None
+
+
+def test_series_rec_falls_back_to_series_search(run, test_db):
+    rec = _series_rec("Stormlight Archive")
+    assert run([rec], [DECOYS, STORM]) == {"added": 1}
+    r = _rows(test_db)["The Stormlight Archive"]
+    assert (r["series"], r["hardcover_id"], r["series_pos"], r["cover_url"]) == (
+        "The Stormlight Archive", None, None, None)
+    assert len(run.covers) == 1
+
+
+def test_unmatched_series_rec_dropped(run, test_db):
+    assert run([_series_rec("Velmora Cycle", "Penelope Starling")],
+               [DECOYS, [STORM[0]]]) == {"added": 0}
+
+
+def test_book_rec_does_not_trigger_series_search(run, test_db):
+    seen = []
+    run.seen = seen
+    assert run([_rec("Velmora", author="Penelope Starling")], [DECOYS]) == {"added": 0}
+    assert [q["variables"]["t"] for q in seen] == ["Book"]
+
+
+def test_series_search_error_trips_breaker(run, test_db):
+    recs = [_series_rec(), _rec("Two", author="A")]
+    assert run(recs, [DECOYS, 500]) == {"added": 2}
+    assert all(r["hardcover_id"] is None for r in _rows(test_db).values())
+    assert len([m for m in _logs(test_db) if "verification failed" in m]) == 1
 
 
 def test_num_filter():

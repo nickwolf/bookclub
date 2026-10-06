@@ -160,8 +160,8 @@ def _sleep(seconds: float):
 
 
 HC_SEARCH_QUERY = """
-query Search($q: String!, $n: Int!) {
-  search(query: $q, query_type: "Book", per_page: $n, page: 1) { results }
+query Search($q: String!, $t: String!, $n: Int!) {
+  search(query: $q, query_type: $t, per_page: $n, page: 1) { results }
 }
 """
 HC_SEARCH_HITS = 5
@@ -175,28 +175,34 @@ def _titles_agree(a: set[str], b: set[str]) -> bool:
                for x in a for y in b)
 
 
-def _hit_qualifies(doc: dict, title: str, author: str | None) -> bool:
+def _hit_qualifies(doc_title: str, doc_authors: str, title: str, author: str | None) -> bool:
     """Search is fuzzy and always returns hits, so require title and author to agree."""
     want = title_keys(title)
-    have = title_keys(doc.get("title") or "")
+    have = title_keys(doc_title)
     wanted = author_surnames(author)
     if not wanted:
         return bool(want & have)
-    names = ", ".join(doc.get("author_names") or [])
-    return _titles_agree(want, have) and bool(wanted & author_surnames(names))
+    return _titles_agree(want, have) and bool(wanted & author_surnames(doc_authors))
 
 
-def search_hc_book(client: httpx.Client, title: str, author: str | None) -> dict | None:
-    """Best Hardcover match for a title and author, or None. Raises on API errors."""
+def _hc_search(client: httpx.Client, title: str, author: str | None, kind: str) -> list[dict]:
+    """Search documents of the given query type ("Book" or "Series"). Raises on API errors."""
     resp = _hc_post(client, {"query": HC_SEARCH_QUERY,
                              "variables": {"q": f"{title} {author or ''}".strip(),
-                                           "n": HC_SEARCH_HITS}})
+                                           "t": kind, "n": HC_SEARCH_HITS}})
     body = resp.json()
     if body.get("errors"):
         raise RuntimeError(f"Hardcover search error: {body['errors']}")
     results = ((body.get("data") or {}).get("search") or {}).get("results") or {}
-    docs = [h.get("document") or {} for h in results.get("hits") or []]
-    docs = [d for d in docs if d.get("id") and _hit_qualifies(d, title, author)]
+    return [h.get("document") or {} for h in results.get("hits") or []]
+
+
+def search_hc_book(client: httpx.Client, title: str, author: str | None) -> dict | None:
+    """Best Hardcover book match for a title and author, or None. Raises on API errors."""
+    docs = [d for d in _hc_search(client, title, author, "Book")
+            if d.get("id") and _hit_qualifies(d.get("title") or "",
+                                              ", ".join(d.get("author_names") or []),
+                                              title, author)]
     if not docs:
         return None
     best = max(docs, key=lambda d: d.get("users_count") or 0)
@@ -209,6 +215,17 @@ def search_hc_book(client: httpx.Client, title: str, author: str | None) -> dict
         "series": (featured.get("series") or {}).get("name"),
         "series_pos": featured.get("position"),
     }
+
+
+def search_hc_series(client: httpx.Client, title: str, author: str | None) -> dict | None:
+    """Best Hardcover series match (name and author only), or None. Raises on API errors."""
+    docs = [d for d in _hc_search(client, title, author, "Series")
+            if d.get("id") and _hit_qualifies(d.get("name") or "", d.get("author_name") or "",
+                                              title, author)]
+    if not docs:
+        return None
+    best = max(docs, key=lambda d: d.get("readers_count") or 0)
+    return {"title": best["name"], "author": best.get("author_name") or author}
 
 
 # Skip pruning if a sync saw fewer than this fraction of the rows already stored
