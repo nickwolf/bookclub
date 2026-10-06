@@ -5,7 +5,6 @@ Mirrors the logic in refresh_recs.py but runs inside the container.
 
 import json
 import os
-import re
 
 import anthropic
 
@@ -13,7 +12,42 @@ import db
 from textnorm import filter_duplicates
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL   = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+DEFAULT_MODEL = "claude-sonnet-5-5"
+
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "recommendations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "author": {"type": "string"},
+                    "series": {"type": "string"},
+                    "type": {"type": "string", "enum": ["Book", "Series"]},
+                    "audiobook_available": {"type": "string", "enum": ["Yes", "No", "Partial"]},
+                    "confidence": {"type": "integer"},
+                    "reason": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["title", "author", "series", "type", "audiobook_available",
+                             "confidence", "reason", "tags"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["recommendations"],
+    "additionalProperties": False,
+}
+
+
+def resolve_model() -> str:
+    return os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
+
+
+def _client():
+    return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
 def api_key_configured() -> bool:
@@ -32,7 +66,7 @@ def build_prompt(ctx: dict, count: int) -> str:
         if b.get("series"):
             line += f" (series: {b['series']})"
         if rating:
-            line += f" — {b['rating']}★"
+            line += f" ({b['rating']}★)"
         return line
 
     def _section(header, books, rating=False):
@@ -65,7 +99,7 @@ def build_prompt(ctx: dict, count: int) -> str:
         lines = "\n".join(
             f"  - {r['title']}"
             + (f" ({r['user_rating']}★)" if r.get("user_rating") else "")
-            + (f" — {r['user_notes']}" if r.get("user_notes") else "")
+            + (f": {r['user_notes']}" if r.get("user_notes") else "")
             for r in ctx["read_recs"]
         )
         sections.append(f"Recommendations they've already read and rated:\n{lines}")
@@ -85,39 +119,54 @@ def build_prompt(ctx: dict, count: int) -> str:
         f"and are not listed above.",
         "Focus on finding logical next-reads and gaps given their taste profile.",
         "",
-        "Include a 'confidence' integer (0–100) for how confident you are this specific "
-        "recommendation fits their taste based on their reading history. Be precise — "
-        "reserve 90+ for near-certain fits, use 60–79 for reasonable bets.",
+        "Include a 'confidence' integer (0-100) for how confident you are this specific "
+        "recommendation fits their taste based on their reading history. Be precise: "
+        "reserve 90+ for near-certain fits, use 60-79 for reasonable bets.",
         "",
         "IMPORTANT: The 'reason' field must contain only 1-2 sentences explaining why this "
         "book fits the user's taste. Never put any meta-commentary, corrections, or notes "
         "about the recommendation process in the 'reason' field.",
         "IMPORTANT: Do NOT include any book already listed above. If you catch yourself "
         "about to include a duplicate, silently skip it and pick a different book instead. "
-        "Never mention duplicates or corrections in your output — just produce the final list.",
+        "Never mention duplicates or corrections in your output, just produce the final list.",
         "",
-        "Respond with ONLY a JSON array, no preamble, no explanation, no markdown fences:",
-        '[{"title":"...","author":"...","series":"... or null","type":"Book or Series",'
-        '"audiobook_available":"Yes, No, or Partial","confidence":85,'
-        '"reason":"1-2 sentences why this fits their taste","tags":["genre","subgenre","theme"]}]',
+        "For each recommendation give the title, author, series (empty if none), type "
+        "(Book or Series), audiobook availability, confidence, reason, and a few tags "
+        "(genre, subgenre, theme).",
     ]
     return "\n\n".join(sections)
 
 
-def extract_json(text: str) -> list:
-    text = text.strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\s*```\s*$", "", text, flags=re.MULTILINE)
-    text = text.strip()
-    match = re.search(r"\[.*\]", text, re.DOTALL)
-    if not match:
-        raise ValueError("No JSON array found in Claude's response")
-    return json.loads(match.group(0))
+def _parse_response(message) -> list:
+    """Check stop_reason, then parse the first text block as the schema JSON."""
+    if message.stop_reason == "max_tokens":
+        raise RuntimeError(
+            "The response was truncated before it finished. "
+            "Try requesting fewer recommendations."
+        )
+    if message.stop_reason == "refusal":
+        sd = getattr(message, "stop_details", None)
+        detail = " ".join(
+            x for x in (getattr(sd, "category", None), getattr(sd, "explanation", None)) if x
+        )
+        raise RuntimeError("Claude declined this request" + (f": {detail}" if detail else "."))
+    text = next((b.text for b in message.content if getattr(b, "type", None) == "text"), None)
+    if text is None:
+        raise RuntimeError("Claude returned no text content.")
+    try:
+        return json.loads(text)["recommendations"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise RuntimeError(f"Claude returned malformed output ({e}).") from e
+
+
+def _api_failed(exc: Exception, friendly: str):
+    db.log("gen", f"Claude API call failed: {exc!r}", level="error")
+    raise RuntimeError(friendly) from exc
 
 
 def run_generation(profile_id: int, count: int) -> dict:
     """
-    Synchronous — intended to run in a background thread.
+    Synchronous, intended to run in a background thread.
     Returns {"added": N} on success, raises on failure.
     """
     if not ANTHROPIC_API_KEY:
@@ -125,22 +174,39 @@ def run_generation(profile_id: int, count: int) -> dict:
             "ANTHROPIC_API_KEY is not set. Add it to .env and restart the container."
         )
 
-    db.log("gen", f"Generation started — requesting {count} recs (model: {ANTHROPIC_MODEL})")
+    model = resolve_model()
+    db.log("gen", f"Generation started, requesting {count} recs (model: {model})")
 
     ctx = db.get_rec_context(profile_id)
     prompt = build_prompt(ctx, count)
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     try:
-        message = client.messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=4096,
+        with _client().messages.stream(
+            model=model,
+            max_tokens=32000,
             messages=[{"role": "user", "content": prompt}],
-        )
-    except Exception as e:
-        db.log("gen", f"Claude API call failed: {e}", level="error")
+            output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
+        ) as stream:
+            message = stream.get_final_message()
+    except anthropic.AuthenticationError as e:
+        _api_failed(e, "Anthropic rejected the API key. Check ANTHROPIC_API_KEY in .env.")
+    except anthropic.NotFoundError as e:
+        _api_failed(e, f"Model '{model}' was not found. Refresh the model list or pick another model.")
+    except anthropic.RateLimitError as e:
+        _api_failed(e, "Anthropic rate limit reached. Wait a minute and try again.")
+    except anthropic.APIStatusError as e:
+        _api_failed(e, f"Anthropic API error {e.status_code}: {e.message}")
+    except anthropic.APIConnectionError as e:
+        _api_failed(e, "Could not reach the Anthropic API. Check the network and try again.")
+
+    usage = message.usage
+    db.log("gen", f"Claude responded (model: {model}, input_tokens: {usage.input_tokens}, "
+                  f"output_tokens: {usage.output_tokens})")
+    try:
+        recs = _parse_response(message)
+    except RuntimeError as e:
+        db.log("gen", f"Bad Claude response: {e}", level="error")
         raise
-    recs = extract_json(message.content[0].text)
 
     # Deduplicate against the catalog, all HC books, and the batch itself
     blocked_keys, blocked_series = db.get_blocked_title_keys()
@@ -156,7 +222,7 @@ def run_generation(profile_id: int, count: int) -> dict:
         raw_conf = rec.get("confidence")
         confidence = max(0, min(100, int(raw_conf))) if isinstance(raw_conf, (int, float)) else None
         rec_id = db.upsert_recommendation(
-            rec["title"], rec.get("author"), rec.get("series"),
+            rec["title"], rec.get("author"), rec.get("series") or None,
             rec.get("type", "Book"), rec.get("audiobook_available", "Unknown"),
             rec.get("reason"), source="claude-api", tags=tags, confidence=confidence,
         )
@@ -172,7 +238,7 @@ def run_generation(profile_id: int, count: int) -> dict:
     # Fetch Open Library covers synchronously (best-effort)
     _fetch_covers_sync(cover_targets)
 
-    db.log("gen", f"Generation complete — added {added} recommendations")
+    db.log("gen", f"Generation complete, added {added} recommendations")
     return {"added": added}
 
 
