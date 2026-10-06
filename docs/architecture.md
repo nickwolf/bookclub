@@ -112,6 +112,8 @@ recommendations (
   abs_narrator        TEXT,
   abs_genres          TEXT,            -- comma-separated genres from ABS
   abs_series_seq      TEXT,            -- series sequence string from ABS
+  hardcover_id        INTEGER,         -- Hardcover book id from generation-time verification (no FK; usually not on the shelf)
+  series_pos          REAL,            -- series position from Hardcover; shown when abs_series_seq is empty
   reason              TEXT,            -- AI-generated explanation
   tags                TEXT,            -- comma-separated genre/theme tags from AI
   confidence          REAL,            -- 0–100, AI-generated fit score
@@ -248,9 +250,9 @@ Two-stage matching in `sync.py`:
 
 ### AI context flow
 
-**Primary (in-container):** `POST /recs/generate` → `gen.build_prompt()` → Anthropic API → `gen.extract_json()` → `db.upsert_recommendation()` → Open Library cover fetch
+**Primary (in-container):** `POST /recs/generate` → `gen.build_prompt()` → Anthropic API → `gen.extract_json()` → `gen._verify_recs()` (Hardcover search) → id and fuzzy dedup → `db.upsert_recommendation()` → Open Library cover fetch for unverified recs
 
-`gen.py` reads context fresh from the DB on each run via `db.get_rec_context()`. Recs include `confidence` (0–100 fit score) and `tags` (genre/theme list). Open Library covers are fetched synchronously as a best-effort fallback; HC covers take priority in all queries via `COALESCE`.
+`gen.py` reads context fresh from the DB on each run via `db.get_rec_context()`. Recs include `confidence` (0–100 fit score) and `tags` (genre/theme list). `_verify_recs` looks each title up with `sync.search_hc_book` (title and author must both agree, since Hardcover search always returns hits), overwrites title/author/series with Hardcover's canonical values and stores `hardcover_id`, `series_pos` and the cover. Series-type recs with no book match get a second search with query type Series (canonical name kept as title and series, no id or cover). Hits are ranked by title closeness before popularity, and a miss is retried once with the title alone. Verification waits are capped (3 attempts, 20s) and the batch has a 120s budget; recs left unverified are kept and counted in the result (`unverified`). Unmatched recs are dropped; if Hardcover errors or no token is set, the remaining recs are kept unverified (circuit breaker, one warning). Recs are then deduped exactly by Hardcover id against `hc_books` and the catalog before the fuzzy title filter, and `link_recs_to_hc` links by id when the book is on the shelf. Open Library covers are fetched synchronously only for recs still without a cover; HC covers take priority in all queries via `COALESCE`.
 
 **Legacy (WSL2 host):** `refresh_recs.py` → `GET /api/context` → `claude -p {prompt}` → `POST /api/recs/import`
 

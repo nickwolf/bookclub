@@ -33,7 +33,7 @@
       <div class="queue-badges">
         {% if item.series %}
           <span class="badge type-badge">
-            {{ item.series }}{% if item.abs_series_seq %} #{{ item.abs_series_seq }}{% endif %}
+            {{ item.series }}{% if item.abs_series_seq %} #{{ item.abs_series_seq }}{% elif item.series_pos %} #{{ item.series_pos | num }}{% endif %}
           </span>
         {% endif %}
         {% if item.abs_duration %}

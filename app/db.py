@@ -163,6 +163,8 @@ def init_db():
             "ALTER TABLE recommendations ADD COLUMN confidence REAL",
             "ALTER TABLE profiles ADD COLUMN abs_token TEXT",
             "ALTER TABLE profiles ADD COLUMN abs_picks_playlist_id TEXT",
+            "ALTER TABLE recommendations ADD COLUMN hardcover_id INTEGER",
+            "ALTER TABLE recommendations ADD COLUMN series_pos REAL",
         ]:
             try:
                 conn.execute(sql)
@@ -246,7 +248,7 @@ def update_profile_picks_playlist_id(profile_id: int, playlist_id: str | None):
 # ---------------------------------------------------------------------------
 
 _REC_COLS = f"""
-    r.id, r.hc_book_id, r.title, r.author, r.series, r.type,
+    r.id, r.hc_book_id, r.hardcover_id, r.title, r.author, r.series, r.series_pos, r.abs_series_seq, r.type,
     r.audiobook_available, r.in_abs_library, r.abs_progress, r.abs_finished,
     r.reason, r.tags, r.source, r.confidence, r.created_at, r.updated_at,
     COALESCE(ri.user_status, 'pending') AS user_status,
@@ -256,6 +258,7 @@ _REC_COLS = f"""
     q.position                          AS queue_pos,
     COALESCE(
         h.cover_url,
+        CASE WHEN r.hardcover_id IS NOT NULL THEN r.cover_url END,
         (SELECT h2.cover_url FROM hc_books h2
          WHERE r.series IS NOT NULL AND r.series != ''
            AND h2.series = r.series AND h2.series_pos > 0
@@ -324,7 +327,8 @@ def get_recommendation(rec_id: int, profile_id: int = 1) -> sqlite3.Row | None:
 
 
 def upsert_recommendation(title, author, series, type_, audiobook_available, reason,
-                          source="claude", tags=None, confidence=None):
+                          source="claude", tags=None, confidence=None,
+                          hardcover_id=None, series_pos=None, cover_url=None):
     with db() as conn:
         existing = conn.execute(
             "SELECT id FROM recommendations WHERE lower(title) = lower(?)", (title,)
@@ -333,13 +337,31 @@ def upsert_recommendation(title, author, series, type_, audiobook_available, rea
             if confidence is not None:
                 conn.execute("UPDATE recommendations SET confidence = ? WHERE id = ?",
                              (confidence, existing["id"]))
+            conn.execute("""
+                UPDATE recommendations SET
+                    hardcover_id = COALESCE(hardcover_id, ?),
+                    series_pos   = COALESCE(series_pos, ?),
+                    cover_url    = COALESCE(cover_url, ?)
+                WHERE id = ?
+            """, (hardcover_id, series_pos, cover_url, existing["id"]))
             return existing["id"]
         cur = conn.execute("""
             INSERT INTO recommendations (title, author, series, type, audiobook_available,
-                                         reason, source, tags, confidence)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (title, author, series, type_, audiobook_available, reason, source, tags, confidence))
+                                         reason, source, tags, confidence,
+                                         hardcover_id, series_pos, cover_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, author, series, type_, audiobook_available, reason, source, tags,
+              confidence, hardcover_id, series_pos, cover_url))
         return cur.lastrowid
+
+
+def get_known_hardcover_ids() -> set[int]:
+    """Hardcover book ids already on the shelf (hc_books) or in the catalog."""
+    with db() as conn:
+        ids = {r[0] for r in conn.execute("SELECT id FROM hc_books")}
+        ids |= {r[0] for r in conn.execute(
+            "SELECT hardcover_id FROM recommendations WHERE hardcover_id IS NOT NULL")}
+    return ids
 
 
 def get_bookclub_picks(profile_id: int) -> list[sqlite3.Row]:
@@ -405,7 +427,7 @@ def get_queue(profile_id: int = 1) -> list[sqlite3.Row]:
             SELECT q.*, r.title, r.author, r.series, r.type,
                    r.audiobook_available, r.in_abs_library, r.abs_finished,
                    r.abs_library_item_id, r.abs_duration, r.abs_narrator,
-                   r.abs_genres, r.abs_series_seq,
+                   r.abs_genres, r.abs_series_seq, r.series_pos,
                    r.reason, ri.user_status, ri.user_rating, r.hc_book_id,
                    COALESCE(h.cover_url, r.cover_url) AS cover_url
             FROM queue q
@@ -422,7 +444,7 @@ def get_rec_detail(rec_id: int, profile_id: int = 1) -> sqlite3.Row | None:
         return conn.execute(f"""
             SELECT {_REC_COLS},
                    r.abs_description, r.abs_duration, r.abs_narrator,
-                   r.abs_genres, r.abs_series_seq
+                   r.abs_genres
             {_REC_JOINS}
             WHERE r.id = :rec_id
         """, {"pid": profile_id, "rec_id": rec_id}).fetchone()

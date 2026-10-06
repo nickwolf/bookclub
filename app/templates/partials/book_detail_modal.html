@@ -19,7 +19,7 @@
         <div class="modal-badges">
           {% if rec.series %}
             <span class="badge type-badge">
-              {{ rec.series }}{% if rec.abs_series_seq %} #{{ rec.abs_series_seq }}{% endif %}
+              {{ rec.series }}{% if rec.abs_series_seq %} #{{ rec.abs_series_seq }}{% elif rec.series_pos %} #{{ rec.series_pos | num }}{% endif %}
             </span>
           {% endif %}
           {% if rec.abs_duration %}

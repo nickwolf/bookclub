@@ -4,7 +4,7 @@
      hx-trigger="every 3s"
      hx-target="#gen-status"
      hx-swap="outerHTML">
-  <span class="gen-spinner">⟳</span> Generating recommendations… this takes about 10–20 seconds.
+  <span class="gen-spinner">⟳</span> Generating recommendations… this can take a minute or two.
 </div>
 {% elif gen_last %}
   {% if gen_last.error %}
@@ -14,6 +14,7 @@
   {% else %}
 <div id="gen-status" class="gen-status success">
   <strong>Done!</strong> Added {{ gen_last.added }} new recommendation{{ "s" if gen_last.added != 1 else "" }}.
+  {% if gen_last.unverified %}<span class="gen-note">{{ gen_last.unverified }} not verified, Hardcover was unavailable.</span>{% endif %}
   <a href="/" class="btn btn-queue gen-view-btn">View recommendations</a>
 </div>
   {% endif %}
