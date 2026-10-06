@@ -87,3 +87,9 @@ def test_exact_key_blocks_regardless_of_author():
 def test_author_list_overlap():
     assert _dups("The Martiann", "The Martian", existing_author="Andy Weir, Other Person",
                  author="Person Other, Andy Weir")
+
+
+def test_placeholder_author_is_unknown():
+    for placeholder in ("Unknown", "unknown author", "ANONYMOUS", "N/A", "Various", "", "  "):
+        assert _dups("The Martiann", "The Martian", existing_author="Andy Weir",
+                     author=placeholder), placeholder

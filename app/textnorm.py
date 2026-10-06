@@ -36,10 +36,15 @@ def title_keys(title: str) -> set[str]:
     return keys
 
 
+_PLACEHOLDER_AUTHORS = {"unknown", "unknown author", "anonymous", "n/a", "na", "various"}
+
+
 def author_surnames(author: str | None) -> set[str]:
     """Lowercased ascii last words of each name in a comma/and/ampersand separated author list."""
     out = set()
     for name in re.split(r",|&|\band\b", author or ""):
+        if name.strip().lower() in _PLACEHOLDER_AUTHORS:
+            continue
         name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
         words = re.sub(r"[^\w\s]", " ", name).split()
         if words:
