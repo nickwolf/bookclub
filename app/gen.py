@@ -50,11 +50,19 @@ def model_lacks_structured_outputs(model_id: str) -> bool:
 def resolve_model(warn: bool = False) -> str:
     """Saved choice, then ANTHROPIC_MODEL, then newest cached Sonnet, then DEFAULT_MODEL."""
     saved = db.get_setting("model")
-    if saved and model_lacks_structured_outputs(saved):
-        if warn:
-            db.log("gen", f"Saved model {saved} lacks structured outputs, using the default",
-                   level="warning")
-        saved = None
+    if saved:
+        cache = {m["id"]: m for m in db.get_cached_models()}
+        if cache and saved not in cache:
+            problem = "is not in the model list"
+        elif model_lacks_structured_outputs(saved):
+            problem = "lacks structured outputs"
+        else:
+            problem = None
+        if problem:
+            if warn:
+                db.log("gen", f"Saved model {saved} {problem}, using the default",
+                       level="warning")
+            saved = None
     return saved or os.environ.get("ANTHROPIC_MODEL") or latest_sonnet()
 
 

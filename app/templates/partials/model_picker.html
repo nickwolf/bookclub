@@ -16,7 +16,7 @@
         <option value="{{ m.id }}" {% if m.id == selected_model %}selected{% endif %}>{{ m.display_name }}</option>
         {% endfor %}
         {% if selected_model and selected_model not in models | map(attribute="id") %}
-        <option value="{{ selected_model }}" selected>{{ selected_model }} (not in list)</option>
+        <option value="{{ selected_model }}" selected>{{ selected_model }} (unavailable, using the default)</option>
         {% endif %}
       </select>
       <span id="model-save-status" class="note-status"></span>

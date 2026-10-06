@@ -63,8 +63,8 @@ def test_resolve_model_precedence(test_db, monkeypatch):
     assert gen.resolve_model() == "claude-sonnet-6"
     monkeypatch.setenv("ANTHROPIC_MODEL", "claude-env")
     assert gen.resolve_model() == "claude-env"
-    test_db.set_setting("model", "claude-saved")
-    assert gen.resolve_model() == "claude-saved"
+    test_db.set_setting("model", "claude-opus-5")
+    assert gen.resolve_model() == "claude-opus-5"
     test_db.set_setting("model", "")
     assert gen.resolve_model() == "claude-env"
     monkeypatch.setenv("ANTHROPIC_MODEL", "")
@@ -149,9 +149,20 @@ def test_resolve_model_skips_saved_without_structured(test_db, monkeypatch):
         logged = conn.execute(
             "SELECT COUNT(*) FROM app_log WHERE message LIKE '%claude-haiku-5%'").fetchone()[0]
     assert logged == 1
-    # a saved model the cache has never seen is kept
+
+
+def test_resolve_model_skips_saved_missing_from_cache(test_db, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
     test_db.set_setting("model", "claude-unlisted")
+    # an empty cache cannot say anything, so the saved model is kept
     assert gen.resolve_model() == "claude-unlisted"
+    _fake(monkeypatch, MODELS)
+    gen.refresh_models()
+    assert gen.resolve_model(warn=True) == "claude-sonnet-5-5"
+    with test_db.db() as conn:
+        logged = conn.execute(
+            "SELECT COUNT(*) FROM app_log WHERE message LIKE '%claude-unlisted%'").fetchone()[0]
+    assert logged == 1
 
 
 def test_route_rejects_non_structured_model(client, test_db):
