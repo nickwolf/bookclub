@@ -7,12 +7,15 @@ import json
 import os
 
 import anthropic
+import httpx
 
 import db
+import sync
 from textnorm import filter_duplicates
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 DEFAULT_MODEL = "claude-sonnet-5-5"
+VERIFY_PAUSE = 1.0  # seconds between Hardcover searches, to stay under the burst limit
 
 SCHEMA = {
     "type": "object",
@@ -269,9 +272,21 @@ def run_generation(profile_id: int, count: int) -> dict:
         db.log("gen", f"Bad Claude response: {e}", level="error")
         raise
 
-    # Deduplicate against the catalog, all HC books, and the batch itself
+    recs = _verify_recs(recs)
+
+    # Exact dedup by Hardcover id, then fuzzy dedup by title on the canonical titles
+    known_ids = db.get_known_hardcover_ids()
+    unique = []
+    for rec in recs:
+        hc_id = rec.get("hardcover_id")
+        if hc_id is not None and hc_id in known_ids:
+            db.log("gen", f"Skipped duplicate/already-read: {rec.get('title')}", level="info")
+            continue
+        if hc_id is not None:
+            known_ids.add(hc_id)
+        unique.append(rec)
     blocked_keys, blocked_series = db.get_blocked_title_keys()
-    recs, skipped = filter_duplicates(recs, blocked_keys, blocked_series)
+    recs, skipped = filter_duplicates(unique, blocked_keys, blocked_series)
     for rec in skipped:
         db.log("gen", f"Skipped duplicate/already-read: {rec.get('title')}", level="info")
 
@@ -286,6 +301,8 @@ def run_generation(profile_id: int, count: int) -> dict:
             rec["title"], rec.get("author"), rec.get("series") or None,
             rec.get("type", "Book"), rec.get("audiobook_available", "Unknown"),
             rec.get("reason"), source="claude-api", tags=tags, confidence=confidence,
+            hardcover_id=rec.get("hardcover_id"), series_pos=rec.get("series_pos"),
+            cover_url=rec.get("cover_url"),
         )
         with db.db() as conn:
             conn.execute(
@@ -293,7 +310,8 @@ def run_generation(profile_id: int, count: int) -> dict:
                 "VALUES (?, ?, 'pending')",
                 (profile_id, rec_id),
             )
-        cover_targets.append((rec_id, rec.get("title", ""), rec.get("author", "")))
+        if not rec.get("cover_url"):
+            cover_targets.append((rec_id, rec.get("title", ""), rec.get("author", "")))
         added += 1
 
     # Fetch Open Library covers synchronously (best-effort)
@@ -303,8 +321,48 @@ def run_generation(profile_id: int, count: int) -> dict:
     return {"added": added}
 
 
+def _verify_recs(recs: list) -> list:
+    """Match each rec to a Hardcover book, dropping unmatched ones.
+
+    Hardcover being down or unconfigured keeps the remaining recs unverified.
+    """
+    if not sync.HARDCOVER_TOKEN:
+        db.log("gen", "HARDCOVER_TOKEN not set, recommendations not verified", level="warning")
+        return recs
+    out = []
+    failed = False
+    with httpx.Client(timeout=15) as client:
+        for i, rec in enumerate(recs):
+            if failed:
+                out.append(rec)
+                continue
+            if i:
+                sync._sleep(VERIFY_PAUSE)
+            try:
+                match = sync.search_hc_book(client, rec.get("title") or "", rec.get("author"))
+            except Exception as e:
+                db.log("gen", f"Hardcover verification failed, keeping the rest unverified: {e!r}",
+                       level="warning")
+                failed = True
+                out.append(rec)
+                continue
+            if match is None:
+                db.log("gen", f"Dropped, not found on Hardcover: {rec.get('title')} "
+                              f"by {rec.get('author')}", level="info")
+                continue
+            out.append({
+                **rec,
+                "title": match["title"],
+                "author": match["author"],
+                "series": match["series"] or rec.get("series"),
+                "hardcover_id": match["hardcover_id"],
+                "series_pos": match["series_pos"],
+                "cover_url": match["cover_url"],
+            })
+    return out
+
+
 def _fetch_covers_sync(recs: list[tuple[int, str, str]]):
-    import httpx
     with httpx.Client(timeout=8) as client:
         for rec_id, title, author in recs:
             try:

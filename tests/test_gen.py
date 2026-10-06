@@ -49,6 +49,7 @@ class FakeClient:
 @pytest.fixture
 def fake(monkeypatch, test_db):
     monkeypatch.setattr(gen, "ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(gen.sync, "HARDCOVER_TOKEN", "")
     monkeypatch.setattr(gen, "_fetch_covers_sync", lambda recs: None)
 
     def install(msg):

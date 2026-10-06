@@ -15,7 +15,7 @@ import threading
 import httpx
 
 import db
-from textnorm import _norm
+from textnorm import _norm, author_surnames, title_keys
 
 HARDCOVER_API = "https://api.hardcover.app/v1/graphql"
 ABS_DB_PATH          = os.environ.get("ABS_DB_PATH", "/abs_config/absdatabase.sqlite")
@@ -157,6 +157,58 @@ def _hc_post(client: httpx.Client, payload: dict, attempts: int = 5) -> httpx.Re
 
 def _sleep(seconds: float):
     time.sleep(seconds)
+
+
+HC_SEARCH_QUERY = """
+query Search($q: String!, $n: Int!) {
+  search(query: $q, query_type: "Book", per_page: $n, page: 1) { results }
+}
+"""
+HC_SEARCH_HITS = 5
+HC_TITLE_CUTOFF = 0.9
+
+
+def _titles_agree(a: set[str], b: set[str]) -> bool:
+    if a & b:
+        return True
+    return any(difflib.SequenceMatcher(None, x, y).ratio() >= HC_TITLE_CUTOFF
+               for x in a for y in b)
+
+
+def _hit_qualifies(doc: dict, title: str, author: str | None) -> bool:
+    """Search is fuzzy and always returns hits, so require title and author to agree."""
+    want = title_keys(title)
+    have = title_keys(doc.get("title") or "")
+    wanted = author_surnames(author)
+    if not wanted:
+        return bool(want & have)
+    names = ", ".join(doc.get("author_names") or [])
+    return _titles_agree(want, have) and bool(wanted & author_surnames(names))
+
+
+def search_hc_book(client: httpx.Client, title: str, author: str | None) -> dict | None:
+    """Best Hardcover match for a title and author, or None. Raises on API errors."""
+    resp = _hc_post(client, {"query": HC_SEARCH_QUERY,
+                             "variables": {"q": f"{title} {author or ''}".strip(),
+                                           "n": HC_SEARCH_HITS}})
+    body = resp.json()
+    if body.get("errors"):
+        raise RuntimeError(f"Hardcover search error: {body['errors']}")
+    results = ((body.get("data") or {}).get("search") or {}).get("results") or {}
+    docs = [h.get("document") or {} for h in results.get("hits") or []]
+    docs = [d for d in docs if d.get("id") and _hit_qualifies(d, title, author)]
+    if not docs:
+        return None
+    best = max(docs, key=lambda d: d.get("users_count") or 0)
+    featured = best.get("featured_series") or {}
+    return {
+        "hardcover_id": int(best["id"]),
+        "title": best.get("title") or title,
+        "author": ", ".join(best.get("author_names") or []) or author,
+        "cover_url": (best.get("image") or {}).get("url"),
+        "series": (featured.get("series") or {}).get("name"),
+        "series_pos": featured.get("position"),
+    }
 
 
 # Skip pruning if a sync saw fewer than this fraction of the rows already stored
@@ -632,17 +684,21 @@ def _abs_item_ids_for_recs(rec_ids: list[int]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def link_recs_to_hc(rec_rows: list):
-    """Try to match each recommendation to a Hardcover book by title fuzzy match."""
+    """Link each recommendation to a Hardcover shelf book: by id when known, else fuzzy title."""
     with db.db() as conn:
         hc_books = conn.execute(
             "SELECT id, lower(title) as norm_title FROM hc_books"
         ).fetchall()
+    shelf_ids = {row["id"] for row in hc_books}
 
     hc_norm_map = {row["norm_title"]: row["id"] for row in hc_books}
     hc_norms = list(hc_norm_map.keys())
 
     for rec in rec_rows:
         if rec["hc_book_id"]:
+            continue
+        if rec["hardcover_id"] in shelf_ids:
+            db.link_rec_to_hc(rec["id"], rec["hardcover_id"])
             continue
         norm = _norm(rec["title"])
         matches = difflib.get_close_matches(norm, hc_norms, n=1, cutoff=0.8)
@@ -764,7 +820,8 @@ def run_full_sync(profile_id: int = 1) -> dict:
 
         with db.db() as conn:
             recs = conn.execute(
-                "SELECT id, title, hc_book_id, abs_library_item_id FROM recommendations"
+                "SELECT id, title, hc_book_id, hardcover_id, abs_library_item_id "
+                "FROM recommendations"
             ).fetchall()
 
         abs_count = sync_abs(recs)

@@ -28,7 +28,7 @@
           title="View details">{{ rec.title }}</h3>
       <div class="rec-meta">
         <span class="rec-author">{{ rec.author or "Unknown" }}</span>
-        {% if rec.series %}<span class="rec-series"> · {{ rec.series }}</span>{% endif %}
+        {% if rec.series %}<span class="rec-series"> · {{ rec.series }}{% if rec.series_pos %} #{{ rec.series_pos | num }}{% endif %}</span>{% endif %}
       </div>
     </div>
 

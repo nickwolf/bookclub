@@ -16,6 +16,7 @@ from sync import push_queue_to_abs
 app = FastAPI(title="Bookclub")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+templates.env.filters["num"] = lambda v: f"{v:g}" if isinstance(v, (int, float)) else v
 
 _sync_lock = threading.Lock()
 _sync_running = False
