@@ -151,7 +151,22 @@ sync_log (
   status      TEXT,     -- "running", "ok", "error"
   message     TEXT
 )
+
+app_settings (
+  key   TEXT PRIMARY KEY,   -- currently only "model" (the saved model choice)
+  value TEXT
+)
+
+models_cache (              -- last model list pulled from the Anthropic API
+  id                 TEXT PRIMARY KEY,
+  display_name       TEXT,
+  created_at         TEXT,    -- ISO string, model release time; newest-first ordering
+  structured_outputs INTEGER, -- 1 if the model supports structured outputs
+  fetched_at         TEXT
+)
 ```
+
+`gen.resolve_model()` picks the model: saved `app_settings['model']`, then a non-empty `ANTHROPIC_MODEL`, then the newest cached `claude-sonnet-*` model that supports structured outputs, then `claude-sonnet-5-5`. On startup an empty cache is filled in a background thread when an API key is set.
 
 ---
 

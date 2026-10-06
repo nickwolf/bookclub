@@ -17,8 +17,11 @@ docker compose down
 # Restart (e.g. after config change)
 docker compose restart bookclub
 
-# Rebuild after code changes
-docker compose up -d --build
+# App code change (./app is bind-mounted, no auto-reload)
+docker restart bookclub
+
+# Dockerfile or compose change (from PowerShell; compose fails from WSL with Windows paths)
+powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose up -d --build"
 ```
 
 ---
@@ -170,11 +173,10 @@ Clear the `profile_id` cookie in your browser, or navigate to `/profiles` and sw
 
 ## Updating the App
 
-Watchtower auto-updates are disabled. To update manually after code changes:
+Watchtower auto-updates are disabled. After an app code change, run `docker restart bookclub`. After a Dockerfile or compose change, rebuild from PowerShell:
 
 ```bash
-cd /path/to/bookclub
-docker compose up -d --build
+powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose up -d --build"
 ```
 
 The database is on a named volume and is not affected by rebuilds.
@@ -187,7 +189,7 @@ The database is on a named volume and is not affected by rebuilds.
 |----------|----------|---------|-------------|
 | `HARDCOVER_TOKEN` | Yes | — | Hardcover API bearer token |
 | `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key for in-app recommendation generation |
-| `ANTHROPIC_MODEL` | No | `claude-sonnet-4-6` | Claude model used for generation |
+| `ANTHROPIC_MODEL` | No | (unset) | Optional override. Precedence: model saved in Settings, then this variable, then the newest cached Sonnet, then `claude-sonnet-5-5` |
 | `ABS_URL` | No | — | Audiobookshelf API base URL (e.g. `http://192.168.144.1:13378`) |
 | `ABS_TOKEN` | No | — | Audiobookshelf API bearer token |
 | `ABS_PLAYLIST_ID` | No | — | Default ABS picks playlist ID |
@@ -206,8 +208,8 @@ Bookclub cannot reach ABS by container name (different Docker networks). Use the
 ### ABS cover images
 Served via a proxy endpoint (`GET /abs/cover/{item_id}`) — fetches from ABS API with Bearer token and caches 86400s. The browser can't reach ABS directly, and the cover path is inside the ABS container's filesystem.
 
-### ABS playlist PATCH is broken
-`PATCH /api/playlists/{id}` with `{"items": [...]}` always returns `400 Invalid playlist items. Length mismatch` even for valid library item IDs. Workaround: DELETE the playlist and POST a new one with items in the creation body — this works reliably. Update the cached playlist ID after each rebuild. Playlist item format: `{"libraryItemId": "...", "episodeId": null}`.
+### ABS playlist PATCH only reorders
+`PATCH /api/playlists/{id}` with `{"items": [...]}` reorders existing items and returns `400 Invalid playlist items. Length mismatch` unless `items` is exactly the playlist's current set. Add and remove with `POST /api/playlists/{id}/batch/add` and `/batch/remove` (body `{"items": [{"libraryItemId": "...", "episodeId": null}]}`). batch/add skips items already present. **batch/remove deletes the playlist when it removes the last item**, so never push an empty list to the reading-list playlist. `sync._abs_set_playlist_items` does add, remove, then PATCH for order. A user's playlists come from `GET /api/playlists`, and each item in `GET /api/playlists/{id}` carries `libraryItemId`.
 
 ### SQL reserved word `order`
 ABS SQLite schema uses `order` as a column name in `playlistMediaItems`. Must quote it as `pmi."order"` in queries.

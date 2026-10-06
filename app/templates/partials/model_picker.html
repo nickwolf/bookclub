@@ -1,0 +1,41 @@
+<div id="model-picker" class="user-edit-section">
+  <div class="pref-label">
+    Claude model
+    <span class="pref-hint">Used when generating recommendations</span>
+  </div>
+  <form hx-post="/settings/model"
+        hx-target="#model-save-status"
+        hx-swap="innerHTML"
+        hx-trigger="change"
+        hx-on::before-swap="if (event.detail.xhr.status === 400) event.detail.shouldSwap = true"
+        class="pref-form">
+    <div class="abs-token-row">
+      <select name="model" class="gen-select">
+        <option value="" {% if not selected_model %}selected{% endif %}>Default: latest Sonnet ({{ default_model }})</option>
+        {% for m in models %}
+        <option value="{{ m.id }}" {% if m.id == selected_model %}selected{% endif %}>{{ m.display_name }}</option>
+        {% endfor %}
+        {% if selected_model and selected_model not in models | map(attribute="id") %}
+        <option value="{{ selected_model }}" selected>{{ selected_model }} (unavailable, using the default)</option>
+        {% endif %}
+      </select>
+      <span id="model-save-status" class="note-status"></span>
+    </div>
+  </form>
+  <div class="note-footer">
+    <button type="button" class="btn rec-notes-save"
+            hx-post="/settings/models/refresh"
+            hx-target="#model-picker"
+            hx-swap="outerHTML">Refresh models</button>
+    <span class="pref-hint">
+      {% if picker_message %}<span {% if picker_error %}class="model-error"{% else %}class="save-ok"{% endif %}>{{ picker_message }}</span>{% endif %}
+      {% if models_fetched_at %}Last refreshed {{ models_fetched_at[:16] | replace("T", " ") }}{% endif %}
+    </span>
+  </div>
+  {% if not models %}
+  <p class="empty">
+    {% if api_key_configured %}No models cached yet. Use Refresh models to fetch the list from Anthropic.
+    {% else %}No models cached and no API key is configured. Set ANTHROPIC_API_KEY in .env, restart, then refresh. The default Sonnet is used meanwhile.{% endif %}
+  </p>
+  {% endif %}
+</div>

@@ -2,13 +2,6 @@
 
 A personal book recommendation app — syncs reading history from Hardcover and audiobook library from Audiobookshelf, then uses the Anthropic API to generate tailored recommendations per reader profile.
 
-## Stack
-
-- **Backend:** FastAPI (Python) + SQLite + Jinja2 templates
-- **Frontend:** HTMX for partial updates, vanilla JS for polling/interactions
-- **AI:** Anthropic API (`gen.py`) — in-container generation; `scripts/refresh_recs.py` is the legacy host-side alternative
-- **Container:** Docker, named volume `bookclub_data` for the SQLite DB
-
 ## Key Docs
 
 All reference material lives in `docs/`:
@@ -20,14 +13,18 @@ All reference material lives in `docs/`:
 | `docs/design-system.md` | CSS tokens, typography, theme switching, layout decisions |
 | `docs/product-requirements.md` | Feature spec and intended behavior |
 | `docs/user-guide.md` | End-user documentation |
+| `docs/ROADMAP.md` | Where the ranked backlog lives (GitHub board + `backlog` label) |
 
 **Read `docs/ops-runbook.md` → "Known Gotchas" before touching sync, HTMX, or the ABS integration.**
 
 ## Dev Commands
 
 ```bash
-# After any code change
-docker compose up -d --build
+# App code change (./app is bind-mounted, no auto-reload)
+docker restart bookclub
+
+# Dockerfile or compose change (run from PowerShell, not WSL)
+powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose up -d --build"
 
 # Logs
 docker logs -f bookclub

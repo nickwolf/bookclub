@@ -124,6 +124,10 @@ Paginated at 50 books per page. The subtitle shows how many books match the curr
 
 Click **↺ Recs** in the nav to open the generation page. The app connects to the Anthropic API and generates recommendations directly — no external script needed.
 
+### Choosing a model
+
+Open **Settings → AI Model**. The first option, "Default: latest Sonnet", always uses the newest Sonnet the app knows about. Pick another entry to pin a specific model; the choice saves immediately. Only models that support structured outputs are listed. Click **Refresh models** to pull the current list from Anthropic when a new model is released. The generation page shows which model will be used.
+
 ### What context is sent to Claude
 
 | Signal | Source |

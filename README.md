@@ -121,7 +121,7 @@ See [`.env.example`](.env.example) for the full list with descriptions.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Claude model for generation |
+| `ANTHROPIC_MODEL` | (unset) | Optional model override; by default the newest Sonnet from the Settings model picker is used |
 | `BOOKCLUB_PORT` | `8585` | Host port for the web UI |
 | `TZ` | `UTC` | Timezone for displayed timestamps |
 

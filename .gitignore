@@ -5,3 +5,7 @@ __pycache__/
 *.db
 *.db-shm
 *.db-wal
+.venv/
+.pytest_cache/
+.playwright-cli/
+/.handoff/

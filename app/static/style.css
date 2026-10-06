@@ -661,6 +661,7 @@ nav .badge {
 .pref-input:focus { outline: none; border-color: var(--accent-border); }
 .pref-input::placeholder { color: var(--text-faint); }
 .pref-hint { font-size: 10px; color: var(--text-faint); font-style: italic; margin-left: 6px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.model-error { color: var(--red); font-style: normal; }
 .abs-token-row { display: flex; gap: 8px; }
 .abs-token-input { flex: 1; font-family: monospace; font-size: .8rem; }
 .abs-token-linked { font-size: .75rem; color: var(--green); margin-top: 2px; }

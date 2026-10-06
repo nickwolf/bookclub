@@ -10,6 +10,14 @@ def _now() -> str:
 
 DB_PATH = os.environ.get("DB_PATH", "/data/bookclub.db")
 
+# Hardcover user_book_statuses
+HC_WANT_TO_READ = 1
+HC_READING = 2
+HC_READ = 3
+HC_PAUSED = 4
+HC_DNF = 5
+HC_IGNORED = 6
+
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -17,6 +25,17 @@ def get_conn() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def backup_db(dest_path: str):
+    """Write a consistent snapshot of the live DB to dest_path."""
+    src = get_conn()
+    dest = sqlite3.connect(dest_path)
+    try:
+        src.backup(dest)
+    finally:
+        dest.close()
+        src.close()
 
 
 @contextmanager
@@ -111,6 +130,19 @@ def init_db():
             component   TEXT NOT NULL,
             message     TEXT NOT NULL,
             detail      TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS models_cache (
+            id                 TEXT PRIMARY KEY,
+            display_name       TEXT,
+            created_at         TEXT,
+            structured_outputs INTEGER,
+            fetched_at         TEXT
         );
         """)
 
@@ -213,7 +245,7 @@ def update_profile_picks_playlist_id(profile_id: int, playlist_id: str | None):
 # Recommendation queries
 # ---------------------------------------------------------------------------
 
-_REC_COLS = """
+_REC_COLS = f"""
     r.id, r.hc_book_id, r.title, r.author, r.series, r.type,
     r.audiobook_available, r.in_abs_library, r.abs_progress, r.abs_finished,
     r.reason, r.tags, r.source, r.confidence, r.created_at, r.updated_at,
@@ -230,9 +262,9 @@ _REC_COLS = """
          ORDER BY h2.series_pos ASC LIMIT 1),
         r.cover_url
     ) AS cover_url,
-    CASE WHEN h.status_id = 1
+    CASE WHEN h.status_id = {HC_WANT_TO_READ}
               OR EXISTS(SELECT 1 FROM hc_books h3
-                        WHERE lower(h3.title) = lower(r.title) AND h3.status_id = 1)
+                        WHERE lower(h3.title) = lower(r.title) AND h3.status_id = {HC_WANT_TO_READ})
          THEN 1 ELSE 0 END AS on_want_to_read
 """
 
@@ -420,23 +452,27 @@ def add_to_queue(rec_id: int, profile_id: int = 1, notes: str = "") -> int:
         return cur.lastrowid
 
 
-def remove_from_queue(rec_id: int, profile_id: int = 1):
+def remove_from_queue(rec_id: int, profile_id: int = 1) -> bool:
+    """Drop a rec from the queue. True only if a queue row was deleted."""
     with db() as conn:
-        conn.execute("DELETE FROM queue WHERE rec_id = ? AND profile_id = ?", (rec_id, profile_id))
+        deleted = conn.execute("DELETE FROM queue WHERE rec_id = ? AND profile_id = ?",
+                               (rec_id, profile_id)).rowcount > 0
         conn.execute("""
             UPDATE rec_interactions SET user_status = 'pending', updated_at = ?
             WHERE rec_id = ? AND profile_id = ? AND user_status = 'queued'
         """, (_now(), rec_id, profile_id))
         _reorder_queue(conn, profile_id)
+    return deleted
 
 
-def move_queue_item(queue_id: int, direction: str, profile_id: int = 1):
+def move_queue_item(queue_id: int, direction: str, profile_id: int = 1) -> bool:
+    """Swap an item with its neighbour. True only if the order changed."""
     with db() as conn:
         item = conn.execute(
             "SELECT * FROM queue WHERE id = ? AND profile_id = ?", (queue_id, profile_id)
         ).fetchone()
         if not item:
-            return
+            return False
         pos = item["position"]
         if direction == "up" and pos > 1:
             swap_pos = pos - 1
@@ -445,24 +481,31 @@ def move_queue_item(queue_id: int, direction: str, profile_id: int = 1):
                 "SELECT MAX(position) FROM queue WHERE profile_id = ?", (profile_id,)
             ).fetchone()[0]
             if pos >= max_pos:
-                return
+                return False
             swap_pos = pos + 1
         else:
-            return
+            return False
         conn.execute(
             "UPDATE queue SET position = ? WHERE position = ? AND profile_id = ?",
             (pos, swap_pos, profile_id)
         )
         conn.execute("UPDATE queue SET position = ? WHERE id = ?", (swap_pos, queue_id))
+    return True
 
 
-def reorder_queue(rec_ids: list[int], profile_id: int = 1):
+def reorder_queue(rec_ids: list[int], profile_id: int = 1) -> bool:
+    """Apply a full order. True only if any position changed."""
     with db() as conn:
+        before = conn.execute("SELECT rec_id, position FROM queue WHERE profile_id = ?",
+                              (profile_id,)).fetchall()
         for i, rec_id in enumerate(rec_ids, 1):
             conn.execute(
                 "UPDATE queue SET position = ? WHERE rec_id = ? AND profile_id = ?",
                 (i, rec_id, profile_id)
             )
+        after = conn.execute("SELECT rec_id, position FROM queue WHERE profile_id = ?",
+                             (profile_id,)).fetchall()
+    return {tuple(r) for r in before} != {tuple(r) for r in after}
 
 
 def _reorder_queue(conn, profile_id: int = 1):
@@ -607,7 +650,7 @@ def upsert_hc_book(book_id, title, author, series, series_pos, cover_url, status
             ON CONFLICT(id) DO UPDATE SET
               title=excluded.title, author=excluded.author, series=excluded.series,
               series_pos=excluded.series_pos, cover_url=excluded.cover_url,
-              status_id=excluded.status_id, rating=excluded.rating,
+              status_id=excluded.status_id, rating=COALESCE(NULLIF(excluded.rating, 0), hc_books.rating),
               synced_at=excluded.synced_at
         """, (book_id, title, author, series, series_pos, cover_url, status_id, rating, _now()))
 
@@ -637,12 +680,21 @@ def link_rec_to_hc(rec_id: int, hc_book_id: int):
         )
 
 
-def get_hc_read_titles() -> set[str]:
+def get_blocked_title_keys() -> tuple[dict[str, set[str]], set[str]]:
+    """Title key -> author surnames for every catalog rec and hc_book, plus started series names."""
+    from textnorm import add_blocked, _norm
+    keys: dict[str, set[str]] = {}
+    series: set[str] = set()
+    started = (HC_READ, HC_READING, HC_PAUSED, HC_DNF)
     with db() as conn:
-        rows = conn.execute(
-            "SELECT lower(title) FROM hc_books WHERE status_id = 3"
-        ).fetchall()
-        return {row[0] for row in rows}
+        for row in conn.execute("SELECT title, author FROM recommendations"):
+            add_blocked(keys, row[0], row[1])
+        for row in conn.execute("SELECT title, author, series, status_id FROM hc_books"):
+            add_blocked(keys, row[0], row[1])
+            if row[2] and row[3] in started:
+                series.add(_norm(row[2]))
+    series.discard("")
+    return keys, series
 
 
 def start_sync_log() -> int:
@@ -783,9 +835,9 @@ def get_stats(profile_id: int = 1) -> dict:
         passed  = conn.execute("SELECT COUNT(*) FROM rec_interactions WHERE profile_id=? AND user_status='pass'", (profile_id,)).fetchone()[0]
         read    = conn.execute("SELECT COUNT(*) FROM rec_interactions WHERE profile_id=? AND user_status='read'", (profile_id,)).fetchone()[0]
         in_lib  = conn.execute("SELECT COUNT(*) FROM recommendations WHERE in_abs_library=1").fetchone()[0]
-        hc_read    = conn.execute("SELECT COUNT(*) FROM hc_books WHERE status_id=3").fetchone()[0]
-        hc_want    = conn.execute("SELECT COUNT(*) FROM hc_books WHERE status_id=1").fetchone()[0]
-        unrated_hc   = conn.execute("SELECT COUNT(*) FROM hc_books WHERE status_id=3 AND (rating IS NULL OR rating=0)").fetchone()[0]
+        hc_read    = conn.execute(f"SELECT COUNT(*) FROM hc_books WHERE status_id={HC_READ}").fetchone()[0]
+        hc_want    = conn.execute(f"SELECT COUNT(*) FROM hc_books WHERE status_id={HC_WANT_TO_READ}").fetchone()[0]
+        unrated_hc   = conn.execute(f"SELECT COUNT(*) FROM hc_books WHERE status_id={HC_READ} AND (rating IS NULL OR rating=0)").fetchone()[0]
         unrated_recs = conn.execute("SELECT COUNT(*) FROM rec_interactions WHERE profile_id=? AND user_status='read' AND user_rating IS NULL", (profile_id,)).fetchone()[0]
         in_library_pending = conn.execute("""
             SELECT COUNT(*) FROM recommendations r
@@ -825,9 +877,9 @@ def get_unrated_recs(profile_id: int = 1) -> list[sqlite3.Row]:
 
 def get_unrated_hc_books(limit: int = 200) -> list[sqlite3.Row]:
     with db() as conn:
-        return conn.execute("""
+        return conn.execute(f"""
             SELECT * FROM hc_books
-            WHERE status_id = 3 AND (rating IS NULL OR rating = 0)
+            WHERE status_id = {HC_READ} AND (rating IS NULL OR rating = 0)
             ORDER BY title
             LIMIT ?
         """, (limit,)).fetchall()
@@ -844,33 +896,44 @@ def rate_hc_book(book_id: int, rating: int | None):
 
 def get_rec_context(profile_id: int = 1) -> dict:
     with db() as conn:
-        top_rated = conn.execute("""
+        top_rated = conn.execute(f"""
             SELECT title, author, series, rating
-            FROM hc_books WHERE status_id = 3 AND rating >= 4
-            ORDER BY rating DESC, title LIMIT 100
+            FROM hc_books WHERE status_id = {HC_READ} AND rating >= 4
+            ORDER BY rating DESC, title
         """).fetchall()
 
-        want_to_read = conn.execute("""
-            SELECT title, author FROM hc_books WHERE status_id = 1
-            ORDER BY title LIMIT 200
+        want_to_read = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_WANT_TO_READ}
+            ORDER BY title
         """).fetchall()
 
-        currently_reading = conn.execute("""
-            SELECT title, author, series FROM hc_books WHERE status_id = 2 ORDER BY title
+        currently_reading = conn.execute(f"""
+            SELECT title, author, series FROM hc_books WHERE status_id = {HC_READING} ORDER BY title
         """).fetchall()
 
-        dnf_books = conn.execute("""
-            SELECT title, author FROM hc_books WHERE status_id = 4 ORDER BY title
+        dnf_books = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_DNF} ORDER BY title
         """).fetchall()
 
-        low_rated = conn.execute("""
+        paused_books = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_PAUSED} ORDER BY title
+        """).fetchall()
+
+        low_rated = conn.execute(f"""
             SELECT title, author, series, rating
-            FROM hc_books WHERE status_id = 3 AND rating > 0 AND rating <= 2
+            FROM hc_books WHERE status_id = {HC_READ} AND rating > 0 AND rating <= 2
             ORDER BY rating ASC, title
         """).fetchall()
 
-        all_read = conn.execute("""
-            SELECT title, author FROM hc_books WHERE status_id = 3 ORDER BY title
+        other_read = conn.execute(f"""
+            SELECT title, author, series FROM hc_books
+            WHERE status_id = {HC_READ}
+              AND (rating IS NULL OR rating <= 0 OR (rating > 2 AND rating < 4))
+            ORDER BY rating DESC, title
+        """).fetchall()
+
+        all_read = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_READ} ORDER BY title
         """).fetchall()
 
         existing_recs = conn.execute(
@@ -900,9 +963,61 @@ def get_rec_context(profile_id: int = 1) -> dict:
         "want_to_read": [dict(r) for r in want_to_read],
         "currently_reading": [dict(r) for r in currently_reading],
         "dnf_books": [dict(r) for r in dnf_books],
+        "paused_books": [dict(r) for r in paused_books],
         "low_rated_books": [dict(r) for r in low_rated],
+        "other_read_books": [dict(r) for r in other_read],
         "all_read_books": [dict(r) for r in all_read],
         "existing_recs": [dict(r) for r in existing_recs],
         "passed_with_notes": [dict(r) for r in passed_with_notes],
         "read_recs": [dict(r) for r in read_recs],
     }
+
+
+# ---------------------------------------------------------------------------
+# App settings + model cache
+# ---------------------------------------------------------------------------
+
+def get_setting(key: str) -> str | None:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str | None):
+    """Store a setting; an empty or None value clears it."""
+    with db() as conn:
+        if value:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+        else:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+
+
+def replace_models_cache(models: list[dict]) -> int:
+    """Swap the cached model list in one transaction. Returns the new row count."""
+    fetched_at = _now()
+    with db() as conn:
+        conn.execute("DELETE FROM models_cache")
+        conn.executemany(
+            "INSERT OR REPLACE INTO models_cache "
+            "(id, display_name, created_at, structured_outputs, fetched_at) VALUES (?, ?, ?, ?, ?)",
+            [(m["id"], m["display_name"], m["created_at"], int(m["structured_outputs"]), fetched_at)
+             for m in models])
+    return len(models)
+
+
+def get_cached_models(structured_only: bool = False) -> list[dict]:
+    """Cached models, newest first."""
+    sql = "SELECT * FROM models_cache"
+    if structured_only:
+        sql += " WHERE structured_outputs = 1"
+    sql += " ORDER BY created_at DESC, id DESC"
+    with db() as conn:
+        return [dict(r) for r in conn.execute(sql).fetchall()]
+
+
+def get_models_fetched_at() -> str | None:
+    with db() as conn:
+        row = conn.execute("SELECT MAX(fetched_at) AS t FROM models_cache").fetchone()
+    return row["t"] if row else None

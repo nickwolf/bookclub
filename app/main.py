@@ -1,3 +1,4 @@
+import html
 import os
 import threading
 from datetime import datetime
@@ -42,6 +43,7 @@ def _run_gen(profile_id: int, count: int):
 def startup():
     db.init_db()
     syncer.seed_if_empty()
+    threading.Thread(target=generator.refresh_models_if_empty, daemon=True).start()
     # Auto-sync on startup if last sync was more than 1 hour ago (or never)
     if _should_auto_sync():
         t = threading.Thread(target=_run_sync, args=(1,), daemon=True)
@@ -83,7 +85,10 @@ STATUS_LABELS = {
     "archive":    "Archive",
 }
 
-HC_STATUS = {1: "Want to Read", 2: "Reading", 3: "Read", 4: "DNF"}
+HC_STATUS = {
+    db.HC_WANT_TO_READ: "Want to Read", db.HC_READING: "Reading", db.HC_READ: "Read",
+    db.HC_PAUSED: "Paused", db.HC_DNF: "DNF", db.HC_IGNORED: "Ignored",
+}
 
 
 def get_profile_id(request: Request) -> int:
@@ -130,7 +135,7 @@ def recommendations_page(request: Request, status: str = "all", q: str = ""):
 def rec_queue(rec_id: int, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
     db.add_to_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, add=[rec_id])
     if request.headers.get("HX-Request"):
         return _card(request, rec_id)
     return RedirectResponse("/", status_code=303)
@@ -140,8 +145,8 @@ def rec_queue(rec_id: int, request: Request, background_tasks: BackgroundTasks):
 def rec_pass(rec_id: int, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "pass", profile_id)
-    db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    if db.remove_from_queue(rec_id, profile_id):
+        background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     if request.headers.get("HX-Request"):
         return _card(request, rec_id)
     return RedirectResponse("/", status_code=303)
@@ -160,8 +165,8 @@ def rec_mark_read(rec_id: int, request: Request, background_tasks: BackgroundTas
                   source: str = Form("")):
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "read", profile_id)
-    db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    if db.remove_from_queue(rec_id, profile_id):
+        background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     if request.headers.get("HX-Request"):
         if source == "queue":
             items = db.get_queue(profile_id)
@@ -213,8 +218,8 @@ def queue_page(request: Request):
 @app.post("/queue/{rec_id}/remove")
 def queue_remove(rec_id: int, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
-    db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    if db.remove_from_queue(rec_id, profile_id):
+        background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     if request.headers.get("HX-Request"):
         items = db.get_queue(profile_id)
         return templates.TemplateResponse("partials/queue_list.html",
@@ -225,8 +230,8 @@ def queue_remove(rec_id: int, request: Request, background_tasks: BackgroundTask
 @app.post("/queue/{queue_id}/move/{direction}")
 def queue_move(queue_id: int, direction: str, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
-    db.move_queue_item(queue_id, direction, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    if db.move_queue_item(queue_id, direction, profile_id):
+        background_tasks.add_task(push_queue_to_abs, profile_id, reorder=True)
     if request.headers.get("HX-Request"):
         items = db.get_queue(profile_id)
         return templates.TemplateResponse("partials/queue_list.html",
@@ -239,8 +244,8 @@ async def queue_reorder(request: Request, background_tasks: BackgroundTasks):
     form = await request.form()
     profile_id = get_profile_id(request)
     rec_ids = [int(v) for v in form.getlist("rec_ids[]")]
-    db.reorder_queue(rec_ids, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    if db.reorder_queue(rec_ids, profile_id):
+        background_tasks.add_task(push_queue_to_abs, profile_id, reorder=True)
     return HTMLResponse("", status_code=200)
 
 
@@ -255,7 +260,7 @@ def history_page(request: Request, q: str = "", rating: str = "", page: int = 1)
     page = max(1, page)
     offset = (page - 1) * HISTORY_PAGE_SIZE
     with db.db() as conn:
-        where_clauses = ["status_id = 3"]
+        where_clauses = [f"status_id = {db.HC_READ}"]
         params: list = []
         if q:
             where_clauses.append("(lower(title) LIKE ? OR lower(author) LIKE ?)")
@@ -362,7 +367,7 @@ def review_queue(rec_id: int, request: Request, background_tasks: BackgroundTask
                  skip_ids: str = Form("")):
     profile_id = get_profile_id(request)
     db.add_to_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, add=[rec_id])
     return _review_card(request, skip_ids)
 
 
@@ -371,8 +376,8 @@ def review_pass(rec_id: int, request: Request, background_tasks: BackgroundTasks
                 skip_ids: str = Form("")):
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "pass", profile_id)
-    db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    if db.remove_from_queue(rec_id, profile_id):
+        background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     return _review_card(request, skip_ids)
 
 
@@ -402,12 +407,13 @@ def review_show(rec_id: int, request: Request, skip_ids: str = ""):
 
 
 @app.post("/review/{rec_id}/rate")
-def review_rate(rec_id: int, request: Request,
+def review_rate(rec_id: int, request: Request, background_tasks: BackgroundTasks,
                 rating: int = Form(...), skip_ids: str = Form("")):
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "read", profile_id)
     db.set_rec_rating(rec_id, rating, profile_id)
-    db.remove_from_queue(rec_id, profile_id)
+    if db.remove_from_queue(rec_id, profile_id):
+        background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     return _review_card(request, skip_ids)
 
 
@@ -452,6 +458,7 @@ def recs_refresh_page(request: Request):
     return _tmpl(request, "recs_refresh.html",
                  profile_id=profile_id,
                  api_key_configured=generator.api_key_configured(),
+                 model=generator.resolve_model(),
                  gen_running=_gen_running,
                  gen_last=_gen_last)
 
@@ -648,7 +655,46 @@ def rec_detail(rec_id: int, request: Request):
 def settings_page(request: Request):
     app_log = db.get_app_log(200)
     sync_history = db.get_sync_history(20)
-    return _tmpl(request, "settings.html", app_log=app_log, sync_history=sync_history)
+    return _tmpl(request, "settings.html", app_log=app_log, sync_history=sync_history,
+                 **_model_picker_ctx())
+
+
+def _model_picker_ctx(message: str | None = None, error: bool = False) -> dict:
+    return {
+        "models": db.get_cached_models(structured_only=True),
+        "selected_model": db.get_setting("model") or "",
+        "resolved_model": generator.resolve_model(),
+        "default_model": generator.latest_sonnet(),
+        "models_fetched_at": db.get_models_fetched_at(),
+        "api_key_configured": generator.api_key_configured(),
+        "picker_message": message,
+        "picker_error": error,
+    }
+
+
+@app.post("/settings/model")
+def save_model(model: str = Form("")):
+    model = model.strip()
+    if model and generator.model_lacks_structured_outputs(model):
+        return HTMLResponse(
+            f'<span class="model-error">{html.escape(model)} does not support structured outputs, '
+            "which recommendations need.</span>", status_code=400)
+    db.set_setting("model", model)
+    return HTMLResponse('<span class="save-ok">Saved ✓</span>')
+
+
+@app.post("/settings/models/refresh", response_class=HTMLResponse)
+def refresh_models(request: Request):
+    if not generator.api_key_configured():
+        msg, err = "ANTHROPIC_API_KEY is not set in .env, so the model list cannot be fetched.", True
+    else:
+        try:
+            msg, err = f"Fetched {generator.refresh_models()} models", False
+        except Exception as e:
+            db.log("gen", f"Model list refresh failed: {e!r}", level="error")
+            msg, err = f"Could not fetch models: {e}", True
+    return templates.TemplateResponse(
+        "partials/model_picker.html", {"request": request, **_model_picker_ctx(msg, err)})
 
 
 @app.post("/settings/log/clear")
