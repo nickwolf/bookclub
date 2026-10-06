@@ -161,6 +161,12 @@ def test_generation_enriches_matched_and_drops_unmatched(run, test_db):
     assert any("Dropped, not found on Hardcover: The Glass Cartographer" in m for m in _logs(test_db))
 
 
+def test_match_keeps_model_author_over_contributor_list(run, test_db):
+    dcc = _doc(446681, "Dungeon Crawler Carl", ["Matt Dinniman", "Will Staehle"], users=9000)
+    assert run([_rec("Dungeon Crawler Carl", author="Matt Dinniman")], [[dcc]]) == {"added": 1}
+    assert _rows(test_db)["Dungeon Crawler Carl"]["author"] == "Matt Dinniman"
+
+
 def test_circuit_breaker_keeps_unverified_and_stops(run, test_db):
     recs = [_rec("One", author="A"), _rec("Two", author="A"), _rec("Three", author="A")]
     assert run(recs, [500]) == {"added": 3}

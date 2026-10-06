@@ -353,7 +353,7 @@ def _verify_recs(recs: list) -> list:
                 continue
             if series_match:
                 out.append({**rec, "title": series_match["title"],
-                            "author": series_match["author"],
+                            "author": rec.get("author") or series_match["author"],
                             "series": series_match["title"]})
             elif match is None:
                 db.log("gen", f"Dropped, not found on Hardcover: {rec.get('title')} "
@@ -362,7 +362,7 @@ def _verify_recs(recs: list) -> list:
                 out.append({
                     **rec,
                     "title": match["title"],
-                    "author": match["author"],
+                    "author": rec.get("author") or match["author"],
                     "series": match["series"] or rec.get("series"),
                     "hardcover_id": match["hardcover_id"],
                     "series_pos": match["series_pos"],
