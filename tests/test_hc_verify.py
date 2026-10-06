@@ -62,7 +62,7 @@ def test_picks_matching_hit_over_decoys(hc):
     assert m == {"hardcover_id": 594985, "title": "The Will of the Many",
                  "author": "James Islington",
                  "cover_url": "https://assets.hardcover.app/594985.jpg",
-                 "series": "Hierarchy", "series_pos": 1.0}
+                 "series": "Hierarchy", "series_pos": 1.0, "prefix_only": False}
     assert seen[0]["variables"]["q"] == "The Will of the Many James Islington"
     assert seen[0]["variables"]["n"] == 5
 
@@ -390,3 +390,34 @@ def test_status_shows_unverified_note(client):
     main._gen_last = {"added": 4, "unverified": 3, "error": None, "finished_at": None}
     assert "3 not verified, Hardcover was unavailable." in client.get("/recs/generate/status", headers={"HX-Request": "true"}).text
     main._gen_last = None
+
+
+def test_series_prefix_prefers_first_volume_over_popularity(hc):
+    hits = [_doc(10, "Mistborn: Secret History", ["Brandon Sanderson"], users=99000),
+            _doc(11, "Mistborn: The Final Empire", ["Brandon Sanderson"], users=90000,
+                 featured=_series("Mistborn", 1.0))]
+    m = sync.search_hc_book(_search_client([hits]), "Mistborn", "Brandon Sanderson")
+    assert (m["hardcover_id"], m["prefix_only"]) == (11, True)
+
+
+def test_prefix_only_match_is_provisional(run, test_db):
+    prefix = [_doc(10, "Mistborn: Secret History", ["Brandon Sanderson"], users=3000)]
+    exact = [_doc(30, "Mistborn", ["Brandon Sanderson"], users=500)]
+    assert run([_rec("Mistborn", author="Brandon Sanderson")], [prefix, exact])["added"] == 1
+    assert _rows(test_db)["Mistborn"]["hardcover_id"] == 30
+
+
+def test_prefix_only_kept_when_wider_search_finds_nothing_better(run, test_db):
+    prefix = [_doc(10, "Mistborn: The Final Empire", ["Brandon Sanderson"], users=3000)]
+    assert run([_rec("Mistborn", author="Brandon Sanderson")], [prefix, DECOYS])["added"] == 1
+    assert _rows(test_db)["Mistborn: The Final Empire"]["hardcover_id"] == 10
+
+
+def test_budget_checked_before_every_search(run, test_db, monkeypatch):
+    ticks = iter([0, 0, 500])
+    monkeypatch.setattr(gen, "_monotonic", lambda: next(ticks))
+    seen = []
+    run.seen = seen
+    rec = _rec("Nothing Here", author="Nobody")
+    assert run([rec], [DECOYS]) == {"added": 1, "unverified": 1}
+    assert len(seen) == 1

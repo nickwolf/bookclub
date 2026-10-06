@@ -328,6 +328,10 @@ def run_generation(profile_id: int, count: int) -> dict:
     return {"added": added, "unverified": unverified}
 
 
+class _OutOfTime(Exception):
+    pass
+
+
 def _monotonic() -> float:
     return time.monotonic()
 
@@ -346,11 +350,12 @@ def _verify_recs(recs: list) -> list:
     kw = {"attempts": VERIFY_ATTEMPTS, "max_wait": VERIFY_MAX_WAIT}
     deadline = _monotonic() + VERIFY_BUDGET
     with httpx.Client(timeout=15) as client:
+        def search(fn, *args, **extra):
+            if _monotonic() > deadline:
+                raise _OutOfTime()
+            return fn(client, *args, **kw, **extra)
+
         for i, rec in enumerate(recs):
-            if not failed and _monotonic() > deadline:
-                db.log("gen", "Hardcover verification ran out of time, keeping the rest "
-                              "unverified", level="warning")
-                failed = True
             if failed:
                 out.append({**rec, "_unverified": True})
                 continue
@@ -358,14 +363,23 @@ def _verify_recs(recs: list) -> list:
             try:
                 if i:
                     sync._sleep(VERIFY_PAUSE)
-                match = sync.search_hc_book(client, title, author, **kw)
-                if match is None:
+                match = search(sync.search_hc_book, title, author)
+                if match is None or match["prefix_only"]:
+                    # A prefix-only hit is provisional: the wider search may hold the exact title
                     sync._sleep(VERIFY_PAUSE)
-                    match = sync.search_hc_book(client, title, author, title_only=True, **kw)
+                    wider = search(sync.search_hc_book, title, author, title_only=True)
+                    if wider and (match is None or not wider["prefix_only"]):
+                        match = wider
                 series_match = None
                 if match is None and rec.get("type") == "Series":
                     sync._sleep(VERIFY_PAUSE)
-                    series_match = sync.search_hc_series(client, title, author, **kw)
+                    series_match = search(sync.search_hc_series, title, author)
+            except _OutOfTime:
+                db.log("gen", "Hardcover verification ran out of time, keeping the rest "
+                              "unverified", level="warning")
+                failed = True
+                out.append({**rec, "_unverified": True})
+                continue
             except Exception as e:
                 db.log("gen", f"Hardcover verification failed, keeping the rest unverified: {e!r}",
                        level="warning")

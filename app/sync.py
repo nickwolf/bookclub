@@ -220,7 +220,8 @@ def _hc_search(client: httpx.Client, title: str, author: str | None, kind: str,
 
 def _closeness(doc_title: str, title: str) -> tuple[bool, bool, float]:
     """Rank key: exact full-title match, then title-key agreement ranked by similarity (so a
-    parenthetical edition ranks lower). Series-prefix-only matches tie, leaving popularity to decide."""
+    parenthetical edition ranks lower). Series-prefix-only matches tie, leaving the caller to prefer
+    a first volume, then popularity."""
     exact = full_title_key(doc_title) == full_title_key(title)
     if not _titles_agree(title_keys(doc_title), title_keys(title)):
         return exact, False, 0.0
@@ -242,11 +243,15 @@ def search_hc_book(client: httpx.Client, title: str, author: str | None,
                                               title, author)]
     if not docs:
         return None
-    best = max(docs, key=lambda d: (*_closeness(d.get("title") or "", title),
-                                    d.get("users_count") or 0))
+    def rank(d):
+        first = ((d.get("featured_series") or {}).get("position") == 1)
+        return (*_closeness(d.get("title") or "", title), first, d.get("users_count") or 0)
+    best = max(docs, key=rank)
+    exact, agrees, _ = _closeness(best.get("title") or "", title)
     featured = best.get("featured_series") or {}
     return {
         "hardcover_id": int(best["id"]),
+        "prefix_only": not (exact or agrees),
         "title": best.get("title") or title,
         "author": ", ".join(best.get("author_names") or []) or author,
         "cover_url": (best.get("image") or {}).get("url"),
