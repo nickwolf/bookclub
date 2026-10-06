@@ -33,10 +33,8 @@ volumes:
   bookclub_data:
     external: true
 
-  # Audiobookshelf config volume (for library cross-reference).
-  # If you run ABS via Docker and want to share its volume, replace the block below with:
-  #   audiobookshelf_config:
-  #     external: true
-  # Make sure the volume name matches what your ABS container uses.
-  # If you don't use ABS, leave this as-is — the app degrades gracefully.
+  # Audiobookshelf's own config volume, mounted read-only for the library cross-reference.
+  # Must be external: without it compose creates an empty bookclub_audiobookshelf_config instead.
+  # If you don't run ABS in Docker, create an empty volume with this name; the app degrades gracefully.
   audiobookshelf_config:
+    external: true
