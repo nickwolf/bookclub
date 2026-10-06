@@ -134,7 +134,7 @@ def recommendations_page(request: Request, status: str = "all", q: str = ""):
 def rec_queue(rec_id: int, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
     db.add_to_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, add=[rec_id])
     if request.headers.get("HX-Request"):
         return _card(request, rec_id)
     return RedirectResponse("/", status_code=303)
@@ -145,7 +145,7 @@ def rec_pass(rec_id: int, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "pass", profile_id)
     db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     if request.headers.get("HX-Request"):
         return _card(request, rec_id)
     return RedirectResponse("/", status_code=303)
@@ -165,7 +165,7 @@ def rec_mark_read(rec_id: int, request: Request, background_tasks: BackgroundTas
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "read", profile_id)
     db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     if request.headers.get("HX-Request"):
         if source == "queue":
             items = db.get_queue(profile_id)
@@ -218,7 +218,7 @@ def queue_page(request: Request):
 def queue_remove(rec_id: int, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
     db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     if request.headers.get("HX-Request"):
         items = db.get_queue(profile_id)
         return templates.TemplateResponse("partials/queue_list.html",
@@ -230,7 +230,7 @@ def queue_remove(rec_id: int, request: Request, background_tasks: BackgroundTask
 def queue_move(queue_id: int, direction: str, request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
     db.move_queue_item(queue_id, direction, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, reorder=True)
     if request.headers.get("HX-Request"):
         items = db.get_queue(profile_id)
         return templates.TemplateResponse("partials/queue_list.html",
@@ -244,7 +244,7 @@ async def queue_reorder(request: Request, background_tasks: BackgroundTasks):
     profile_id = get_profile_id(request)
     rec_ids = [int(v) for v in form.getlist("rec_ids[]")]
     db.reorder_queue(rec_ids, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, reorder=True)
     return HTMLResponse("", status_code=200)
 
 
@@ -366,7 +366,7 @@ def review_queue(rec_id: int, request: Request, background_tasks: BackgroundTask
                  skip_ids: str = Form("")):
     profile_id = get_profile_id(request)
     db.add_to_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, add=[rec_id])
     return _review_card(request, skip_ids)
 
 
@@ -376,7 +376,7 @@ def review_pass(rec_id: int, request: Request, background_tasks: BackgroundTasks
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "pass", profile_id)
     db.remove_from_queue(rec_id, profile_id)
-    background_tasks.add_task(push_queue_to_abs, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     return _review_card(request, skip_ids)
 
 
@@ -406,12 +406,13 @@ def review_show(rec_id: int, request: Request, skip_ids: str = ""):
 
 
 @app.post("/review/{rec_id}/rate")
-def review_rate(rec_id: int, request: Request,
+def review_rate(rec_id: int, request: Request, background_tasks: BackgroundTasks,
                 rating: int = Form(...), skip_ids: str = Form("")):
     profile_id = get_profile_id(request)
     db.set_rec_status(rec_id, "read", profile_id)
     db.set_rec_rating(rec_id, rating, profile_id)
     db.remove_from_queue(rec_id, profile_id)
+    background_tasks.add_task(push_queue_to_abs, profile_id, remove=[rec_id])
     return _review_card(request, skip_ids)
 
 

@@ -10,6 +10,7 @@ import json
 import os
 import difflib
 import sqlite3
+import threading
 import httpx
 
 import db
@@ -22,6 +23,7 @@ ABS_TOKEN            = os.environ.get("ABS_TOKEN", "")
 ABS_PLAYLIST_ID      = os.environ.get("ABS_PLAYLIST_ID", "")
 HARDCOVER_TOKEN      = os.environ.get("HARDCOVER_TOKEN", "")
 ABS_PICKS_PLAYLIST_NAME = "Bookclub Picks"
+ABS_PICKS_DESCRIPTION = "AI-curated recommendations already in your library, ordered by match confidence."
 
 HC_QUERY = """
 query GetUserBooks($limit: Int!, $offset: Int!) {
@@ -409,6 +411,33 @@ def _abs_http() -> httpx.Client:
     return httpx.Client(timeout=10)
 
 
+def _abs_filter_existing(ids: list[str]) -> list[str]:
+    """Drop ids that no longer exist in ABS (batch/add 400s on unknown ids). Keeps all if the DB is unreadable."""
+    ids = list(ids)
+    if not ids or not os.path.exists(ABS_DB_PATH):
+        return ids
+    try:
+        conn = sqlite3.connect(f"file:{ABS_DB_PATH}?mode=ro", uri=True)
+        try:
+            marks = ",".join("?" * len(ids))
+            found = {r[0] for r in conn.execute(
+                f"SELECT id FROM libraryItems WHERE id IN ({marks})", ids)}
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        db.log("abs", f"Could not check library items in ABS DB: {e}", level="warning")
+        return ids
+    stale = [i for i in ids if i not in found]
+    if stale:
+        db.log("abs", f"Skipping {len(stale)} item(s) no longer in ABS: {', '.join(stale)}",
+               level="warning")
+    return [i for i in ids if i in found]
+
+
+def _abs_items(ids: list[str]) -> list[dict]:
+    return [{"libraryItemId": i, "episodeId": None} for i in ids]
+
+
 def _abs_set_playlist_items(abs_url: str, token: str, playlist_id: str,
                             desired_ids: list[str], allow_empty: bool) -> str:
     """
@@ -421,15 +450,17 @@ def _abs_set_playlist_items(abs_url: str, token: str, playlist_id: str,
     headers = {"Authorization": f"Bearer {token}"}
     base = f"{abs_url}/api/playlists/{playlist_id}"
 
-    def _items(ids):
-        return [{"libraryItemId": i, "episodeId": None} for i in ids]
-
     with _abs_http() as client:
         resp = client.get(base, headers=headers)
         if resp.status_code == 404:
             return "missing"
         resp.raise_for_status()
         current = [i["libraryItemId"] for i in resp.json().get("items", [])]
+        have = set(current)
+
+        # Ids already in the playlist are kept as is; only new ones need to exist
+        new = _abs_filter_existing([i for i in desired if i not in have])
+        desired = [i for i in desired if i in have or i in new]
 
         if not desired and not allow_empty:
             db.log("abs", f"Refusing to empty ABS playlist {playlist_id}: ABS would delete it",
@@ -437,15 +468,14 @@ def _abs_set_playlist_items(abs_url: str, token: str, playlist_id: str,
             return "skipped"
 
         wanted = set(desired)
-        have = set(current)
         to_add = [i for i in desired if i not in have]
         to_remove = [i for i in current if i not in wanted]
 
         if to_add:
-            r = client.post(f"{base}/batch/add", headers=headers, json={"items": _items(to_add)})
+            r = client.post(f"{base}/batch/add", headers=headers, json={"items": _abs_items(to_add)})
             r.raise_for_status()
         if to_remove:
-            r = client.post(f"{base}/batch/remove", headers=headers, json={"items": _items(to_remove)})
+            r = client.post(f"{base}/batch/remove", headers=headers, json={"items": _abs_items(to_remove)})
             r.raise_for_status()
             if not desired:
                 return "deleted"
@@ -453,35 +483,105 @@ def _abs_set_playlist_items(abs_url: str, token: str, playlist_id: str,
         # Adds append, removes keep relative order: this is the order ABS now holds
         resulting = [i for i in current if i in wanted] + to_add
         if resulting != desired:
-            r = client.patch(base, headers=headers, json={"items": _items(desired)})
+            r = client.patch(base, headers=headers, json={"items": _abs_items(desired)})
             r.raise_for_status()
             return "updated"
         return "updated" if (to_add or to_remove) else "unchanged"
 
 
-def push_queue_to_abs(profile_id: int = 1) -> bool:
+def _abs_apply_queue_change(abs_url: str, token: str, playlist_id: str, add: list[str],
+                            remove: list[str], local_order: list[str] | None) -> str:
     """
-    Push the current Bookclub queue order to the ABS Reading List playlist.
-    Only includes items that have an ABS library item ID.
+    Apply one queue action to an ABS playlist without touching items bookclub did not change.
+    local_order, when given, reorders: items in both lists follow it, ABS-only items keep
+    their ABS order after them. Returns "missing", "skipped", "unchanged" or "updated".
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    base = f"{abs_url}/api/playlists/{playlist_id}"
+
+    with _abs_http() as client:
+        resp = client.get(base, headers=headers)
+        if resp.status_code == 404:
+            return "missing"
+        resp.raise_for_status()
+        current = [i["libraryItemId"] for i in resp.json().get("items", [])]
+        have = set(current)
+
+        to_add = _abs_filter_existing([i for i in add if i not in have])
+        to_remove = [i for i in remove if i in have and i not in to_add]
+        if to_remove and not [i for i in current if i not in to_remove] and not to_add:
+            db.log("abs", f"Not removing the last item from ABS playlist {playlist_id}: "
+                          "ABS would delete it", level="warning")
+            to_remove = []
+
+        if to_add:
+            r = client.post(f"{base}/batch/add", headers=headers, json={"items": _abs_items(to_add)})
+            r.raise_for_status()
+        if to_remove:
+            r = client.post(f"{base}/batch/remove", headers=headers, json={"items": _abs_items(to_remove)})
+            r.raise_for_status()
+        resulting = [i for i in current if i not in to_remove] + to_add
+        changed = bool(to_add or to_remove)
+
+        if local_order is not None:
+            present = set(resulting)
+            first = [i for i in dict.fromkeys(local_order) if i in present]
+            firstset = set(first)
+            target = first + [i for i in resulting if i not in firstset]
+            if target != resulting:
+                r = client.patch(base, headers=headers, json={"items": _abs_items(target)})
+                r.raise_for_status()
+                changed = True
+        return "updated" if changed else "unchanged"
+
+
+_push_lock = threading.Lock()
+
+
+def push_queue_to_abs(profile_id: int = 1, add=(), remove=(), reorder: bool = False) -> bool:
+    """
+    Push one queue action to the ABS Reading List playlist.
+    add and remove are recommendation ids; reorder applies the local order.
+    Only touches the items named, so edits made in ABS since the last pull survive.
+    Runs under a lock and reads the local queue at run time, not when it was queued.
     Returns True on success.
     """
     if not ABS_URL or not ABS_TOKEN or not ABS_PLAYLIST_ID:
         return False
 
-    ids = [row["abs_library_item_id"] for row in db.get_queue_abs_items(profile_id)]
-
-    try:
-        status = _abs_set_playlist_items(ABS_URL, ABS_TOKEN, ABS_PLAYLIST_ID, ids, allow_empty=False)
-    except Exception as e:
-        db.log("abs", f"Failed to push queue to ABS: {e}", level="error")
-        return False
+    with _push_lock:
+        queue_rows = db.get_queue_abs_items(profile_id)
+        in_queue = {row["rec_id"] for row in queue_rows}
+        local_order = [row["abs_library_item_id"] for row in queue_rows]
+        # An add since undone, or a remove since redone, is no longer ours to push
+        add_ids = _abs_item_ids_for_recs([r for r in add if r in in_queue])
+        remove_ids = _abs_item_ids_for_recs([r for r in remove if r not in in_queue])
+        if not (add_ids or remove_ids or reorder):
+            return False
+        try:
+            status = _abs_apply_queue_change(ABS_URL, ABS_TOKEN, ABS_PLAYLIST_ID, add_ids,
+                                             remove_ids, local_order if reorder else None)
+        except Exception as e:
+            db.log("abs", f"Failed to push queue to ABS: {e}", level="error")
+            return False
     if status == "missing":
         db.log("abs", f"ABS playlist {ABS_PLAYLIST_ID} not found, queue not pushed", level="error")
         return False
-    if status == "skipped":
-        return False
-    db.log("abs", f"Pushed queue to ABS playlist ({len(ids)} items, {status})")
+    db.log("abs", f"Pushed queue change to ABS playlist (+{len(add_ids)} -{len(remove_ids)}"
+                  f"{' reorder' if reorder else ''}, {status})")
     return True
+
+
+def _abs_item_ids_for_recs(rec_ids: list[int]) -> list[str]:
+    """ABS library item ids for recommendation ids, in the given order, skipping unlinked ones."""
+    ids = []
+    with db.db() as conn:
+        for rid in rec_ids:
+            row = conn.execute("SELECT abs_library_item_id FROM recommendations WHERE id = ?",
+                               (rid,)).fetchone()
+            if row and row["abs_library_item_id"]:
+                ids.append(row["abs_library_item_id"])
+    return ids
 
 
 # ---------------------------------------------------------------------------
@@ -542,11 +642,11 @@ def _abs_library_id_for_item(item_id: str) -> str | None:
 
 
 def _find_picks_playlist(client: httpx.Client, abs_url: str, headers: dict) -> str | None:
-    """Id of this token's user's playlist named 'Bookclub Picks', if any."""
+    """Id of this token's user's 'Bookclub Picks' playlist that bookclub created, if any."""
     resp = client.get(f"{abs_url}/api/playlists", headers=headers)
     resp.raise_for_status()
     for pl in resp.json().get("playlists", []):
-        if pl.get("name") == ABS_PICKS_PLAYLIST_NAME:
+        if pl.get("name") == ABS_PICKS_PLAYLIST_NAME and pl.get("description") == ABS_PICKS_DESCRIPTION:
             return pl["id"]
     return None
 
@@ -554,11 +654,15 @@ def _find_picks_playlist(client: httpx.Client, abs_url: str, headers: dict) -> s
 def sync_picks_playlist(profile_id: int, abs_url: str, abs_token: str) -> int:
     """
     Sync the 'Bookclub Picks' ABS playlist for a profile, in confidence order.
-    Reuses the cached playlist, else one found by name, else creates it.
+    Reuses the cached playlist, else one found by name and description, else creates it.
+    No picks leaves the playlist alone (emptying it would make ABS delete it).
     Returns item count, 0 on failure or when there are no picks.
     """
     picks = db.get_bookclub_picks(profile_id)
-    ids = list(dict.fromkeys(row["abs_library_item_id"] for row in picks))
+    ids = _abs_filter_existing(list(dict.fromkeys(row["abs_library_item_id"] for row in picks)))
+    if not ids:
+        db.log("abs", f"Bookclub Picks: no picks, leaving the ABS playlist as is (profile {profile_id})")
+        return 0
 
     profile = db.get_profile(profile_id)
     pl_id = profile["abs_picks_playlist_id"] if profile else None
@@ -567,17 +671,15 @@ def sync_picks_playlist(profile_id: int, abs_url: str, abs_token: str) -> int:
     try:
         status = None
         if pl_id:
-            status = _abs_set_playlist_items(abs_url, abs_token, pl_id, ids, allow_empty=True)
+            status = _abs_set_playlist_items(abs_url, abs_token, pl_id, ids, allow_empty=False)
         if status in (None, "missing"):
             with _abs_http() as client:
                 pl_id = _find_picks_playlist(client, abs_url, headers)
-            status = (_abs_set_playlist_items(abs_url, abs_token, pl_id, ids, allow_empty=True)
+            status = (_abs_set_playlist_items(abs_url, abs_token, pl_id, ids, allow_empty=False)
                       if pl_id else "missing")
 
         if status == "missing":
             db.update_profile_picks_playlist_id(profile_id, None)
-            if not ids:
-                return 0
             library_id = _abs_library_id_for_item(ids[0])
             if not library_id:
                 db.log("abs", f"Bookclub Picks: library id not found (profile {profile_id})",
@@ -590,16 +692,13 @@ def sync_picks_playlist(profile_id: int, abs_url: str, abs_token: str) -> int:
                     json={
                         "name": ABS_PICKS_PLAYLIST_NAME,
                         "libraryId": library_id,
-                        "description": "AI-curated recommendations already in your library, ordered by match confidence.",
+                        "description": ABS_PICKS_DESCRIPTION,
                         "items": [{"libraryItemId": i, "episodeId": None} for i in ids],
                     },
                 )
                 resp.raise_for_status()
                 db.update_profile_picks_playlist_id(profile_id, resp.json()["id"])
             status = "created"
-        elif status == "deleted":
-            # ABS deletes a playlist when its last item is removed
-            db.update_profile_picks_playlist_id(profile_id, None)
         else:
             db.update_profile_picks_playlist_id(profile_id, pl_id)
         db.log("abs", f"Bookclub Picks {status}: {len(ids)} items (profile {profile_id})")
