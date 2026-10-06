@@ -1,6 +1,6 @@
 services:
   bookclub:
-    build: .
+    image: ghcr.io/nickwolf/bookclub:${BOOKCLUB_IMAGE_TAG:-latest}
     container_name: bookclub
     environment:
       - TZ=${TZ}
@@ -10,10 +10,7 @@ services:
       - ABS_URL=${ABS_URL}
       - ABS_TOKEN=${ABS_TOKEN}
       - ABS_PLAYLIST_ID=${ABS_PLAYLIST_ID}
-    command: uvicorn main:app --host 0.0.0.0 --port 8080
     volumes:
-      # App code bind mount; no auto-reload (StatReload fails on the WSL 9P mount), so docker restart bookclub after edits
-      - ./app:/app
       # Named volume for the app database
       - bookclub_data:/data
       # ABS config mounted read-only for library cross-reference
@@ -22,10 +19,8 @@ services:
       - "${BOOKCLUB_PORT}:8080"
     restart: unless-stopped
     labels:
-      - "com.centurylinklabs.watchtower.enable=false"
-      - "org.opencontainers.image.source=https://github.com/nickwolf/bookclub"
-      - "org.opencontainers.image.description=Self-hosted book recommendation app — Hardcover + Audiobookshelf + Claude AI"
-      - "org.opencontainers.image.licenses=MIT"
+      # Watchtower users get new releases automatically; set BOOKCLUB_IMAGE_TAG=0.2 in .env to stay on a minor line
+      - "com.centurylinklabs.watchtower.enable=true"
 
 volumes:
   # App database. Create before first run: docker volume create bookclub_data

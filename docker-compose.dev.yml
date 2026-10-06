@@ -1,0 +1,12 @@
+# Local development overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+services:
+  bookclub:
+    build: .
+    # Separate name so a local build never shadows the published GHCR tag
+    image: bookclub-dev
+    volumes:
+      # App code bind mount; no auto-reload (StatReload fails on the WSL 9P mount), so docker restart bookclub after edits
+      - ./app:/app
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
