@@ -655,11 +655,6 @@ def upsert_hc_book(book_id, title, author, series, series_pos, cover_url, status
         """, (book_id, title, author, series, series_pos, cover_url, status_id, rating, _now()))
 
 
-def count_hc_books() -> int:
-    with db() as conn:
-        return conn.execute("SELECT COUNT(*) FROM hc_books").fetchone()[0]
-
-
 def prune_hc_books(seen_ids) -> int:
     """Delete hc_books rows not in seen_ids, detaching recommendations first. Returns rows deleted."""
     with db() as conn:

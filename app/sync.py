@@ -27,9 +27,10 @@ ABS_PICKS_PLAYLIST_NAME = "Bookclub Picks"
 ABS_PICKS_DESCRIPTION = "AI-curated recommendations already in your library, ordered by match confidence."
 
 HC_QUERY = """
-query GetUserBooks($limit: Int!, $offset: Int!) {
+query GetUserBooks($limit: Int!, $after: Int!) {
   me {
-    user_books(limit: $limit, offset: $offset, order_by: {id: asc}) {
+    user_books(limit: $limit, where: {id: {_gt: $after}}, order_by: {id: asc}) {
+      id
       book {
         id
         title
@@ -39,6 +40,16 @@ query GetUserBooks($limit: Int!, $offset: Int!) {
       }
       status_id
       rating
+    }
+  }
+}
+"""
+
+HC_COUNT_QUERY = """
+query CountUserBooks {
+  me {
+    user_books_aggregate {
+      aggregate { count }
     }
   }
 }
@@ -159,21 +170,32 @@ def _sleep(seconds: float):
     time.sleep(seconds)
 
 
-# Skip pruning if a sync saw fewer than this fraction of the rows already stored
-HC_PRUNE_MIN_FRACTION = 0.5
+def _hc_user_book_count(client: httpx.Client) -> int | None:
+    """Total user_books rows on Hardcover, or None if the count can't be read."""
+    try:
+        data = _hc_post(client, {"query": HC_COUNT_QUERY}).json()
+        count = data["data"]["me"][0]["user_books_aggregate"]["aggregate"]["count"]
+        return count if isinstance(count, int) else None
+    except Exception as e:
+        db.log("sync", f"Hardcover book count unavailable: {e}", level="warning")
+        return None
 
 
-def _prune_removed(seen_ids: set[int]):
-    """Delete hc_books rows missing from a clean full sync, unless the result looks suspect."""
-    if not seen_ids:
+def _prune_removed(client: httpx.Client, seen_books: set[int], seen_rows: set[int]):
+    """Delete hc_books rows missing from a sync that provably saw every user book."""
+    if not seen_books:
         db.log("sync", "Hardcover returned zero books, skipping prune of removed books", level="warning")
         return
-    stored = db.count_hc_books()
-    if len(seen_ids) < stored * HC_PRUNE_MIN_FRACTION:
-        db.log("sync", f"Hardcover sync saw {len(seen_ids)} of {stored} stored books, "
-                       "skipping prune of removed books", level="warning")
+    expected = _hc_user_book_count(client)
+    if expected is None:
+        db.log("sync", "Skipping prune of removed books, could not confirm Hardcover book count",
+               level="warning")
         return
-    removed = db.prune_hc_books(seen_ids)
+    if len(seen_rows) != expected:
+        db.log("sync", f"Hardcover sync saw {len(seen_rows)} of {expected} books, "
+                       "skipping prune until a sync sees them all", level="warning")
+        return
+    removed = db.prune_hc_books(seen_books)
     if removed:
         db.log("sync", f"Removed {removed} books no longer on Hardcover")
 
@@ -181,24 +203,28 @@ def _prune_removed(seen_ids: set[int]):
 def sync_hardcover() -> int:
     """Pull all user books from Hardcover and upsert into hc_books. Returns count synced.
 
-    After a sync that paged to the end without errors, books no longer on Hardcover are pruned.
+    Pages by user_book id (keyset), so deletions mid-sync can't shift rows out of view. Books no
+    longer on Hardcover are pruned only if the rows seen match Hardcover's own count.
     """
     total = 0
-    seen_ids: set[int] = set()
-    offset = 0
+    seen_books: set[int] = set()
+    seen_rows: set[int] = set()
+    after = 0
     limit = 100
 
     with httpx.Client(timeout=30) as client:
         while True:
             resp = _hc_post(client, {"query": HC_QUERY,
-                                     "variables": {"limit": limit, "offset": offset}})
+                                     "variables": {"limit": limit, "after": after}})
             data = resp.json()
             if "errors" in data:
                 raise RuntimeError(f"Hardcover API error: {data['errors']}")
             me = data.get("data", {}).get("me", [])
             if not me:
                 raise RuntimeError("Hardcover API returned no user data — check token")
-            user_books = me[0].get("user_books", [])
+            user_books = me[0].get("user_books")
+            if not isinstance(user_books, list):
+                raise RuntimeError("Hardcover API returned no user_books list")
             if not user_books:
                 break
 
@@ -217,14 +243,13 @@ def sync_hardcover() -> int:
                 rating = ub.get("rating")
 
                 db.upsert_hc_book(bid, title, author, series, series_pos, cover_url, status_id, rating)
-                seen_ids.add(bid)
+                seen_books.add(bid)
+                seen_rows.add(ub["id"])
                 total += 1
 
-            offset += limit
-            if len(user_books) < limit:
-                break
+            after = user_books[-1]["id"]
 
-    _prune_removed(seen_ids)
+        _prune_removed(client, seen_books, seen_rows)
     return total
 
 
