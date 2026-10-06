@@ -51,3 +51,10 @@ def test_full_history_in_prompt_without_overlap(test_db):
     prompt = gen.build_prompt(test_db.get_rec_context(), 5)
     for i in range(1, n + 1):
         assert prompt.count(f"Title{i:04d} by") == 1
+
+
+def test_zero_rating_does_not_overwrite(test_db):
+    _add(test_db, 1, "Book", test_db.HC_READ, rating=4)
+    _add(test_db, 1, "Book", test_db.HC_READ, rating=0)
+    with test_db.db() as conn:
+        assert conn.execute("SELECT rating FROM hc_books WHERE id = 1").fetchone()[0] == 4

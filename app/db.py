@@ -639,7 +639,7 @@ def upsert_hc_book(book_id, title, author, series, series_pos, cover_url, status
             ON CONFLICT(id) DO UPDATE SET
               title=excluded.title, author=excluded.author, series=excluded.series,
               series_pos=excluded.series_pos, cover_url=excluded.cover_url,
-              status_id=excluded.status_id, rating=COALESCE(excluded.rating, hc_books.rating),
+              status_id=excluded.status_id, rating=COALESCE(NULLIF(excluded.rating, 0), hc_books.rating),
               synced_at=excluded.synced_at
         """, (book_id, title, author, series, series_pos, cover_url, status_id, rating, _now()))
 
