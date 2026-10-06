@@ -7,6 +7,7 @@
         hx-target="#model-save-status"
         hx-swap="innerHTML"
         hx-trigger="change"
+        hx-on::before-swap="if (event.detail.xhr.status === 400) event.detail.shouldSwap = true"
         class="pref-form">
     <div class="abs-token-row">
       <select name="model" class="gen-select">

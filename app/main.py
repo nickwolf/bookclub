@@ -1,3 +1,4 @@
+import html
 import os
 import threading
 from datetime import datetime
@@ -673,7 +674,12 @@ def _model_picker_ctx(message: str | None = None, error: bool = False) -> dict:
 
 @app.post("/settings/model")
 def save_model(model: str = Form("")):
-    db.set_setting("model", model.strip())
+    model = model.strip()
+    if model and generator.model_lacks_structured_outputs(model):
+        return HTMLResponse(
+            f'<span class="model-error">{html.escape(model)} does not support structured outputs, '
+            "which recommendations need.</span>", status_code=400)
+    db.set_setting("model", model)
     return HTMLResponse('<span class="save-ok">Saved ✓</span>')
 
 

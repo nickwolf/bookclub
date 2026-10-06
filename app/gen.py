@@ -42,9 +42,20 @@ SCHEMA = {
 }
 
 
-def resolve_model() -> str:
+def model_lacks_structured_outputs(model_id: str) -> bool:
+    """True only when the cache knows the model and says it can't do structured outputs."""
+    return any(m["id"] == model_id and not m["structured_outputs"] for m in db.get_cached_models())
+
+
+def resolve_model(warn: bool = False) -> str:
     """Saved choice, then ANTHROPIC_MODEL, then newest cached Sonnet, then DEFAULT_MODEL."""
-    return db.get_setting("model") or os.environ.get("ANTHROPIC_MODEL") or latest_sonnet()
+    saved = db.get_setting("model")
+    if saved and model_lacks_structured_outputs(saved):
+        if warn:
+            db.log("gen", f"Saved model {saved} lacks structured outputs, using the default",
+                   level="warning")
+        saved = None
+    return saved or os.environ.get("ANTHROPIC_MODEL") or latest_sonnet()
 
 
 def latest_sonnet() -> str:
@@ -209,7 +220,7 @@ def run_generation(profile_id: int, count: int) -> dict:
             "ANTHROPIC_API_KEY is not set. Add it to .env and restart the container."
         )
 
-    model = resolve_model()
+    model = resolve_model(warn=True)
     db.log("gen", f"Generation started, requesting {count} recs (model: {model})")
 
     ctx = db.get_rec_context(profile_id)

@@ -137,3 +137,28 @@ def test_generate_page_shows_model(client, test_db, monkeypatch):
     monkeypatch.setattr(gen, "ANTHROPIC_API_KEY", "k")
     test_db.set_setting("model", "claude-saved")
     assert "claude-saved" in client.get("/recs/refresh").text
+
+
+def test_resolve_model_skips_saved_without_structured(test_db, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+    _fake(monkeypatch, MODELS)
+    gen.refresh_models()
+    test_db.set_setting("model", "claude-haiku-5")
+    assert gen.resolve_model(warn=True) == "claude-sonnet-5-5"
+    with test_db.db() as conn:
+        logged = conn.execute(
+            "SELECT COUNT(*) FROM app_log WHERE message LIKE '%claude-haiku-5%'").fetchone()[0]
+    assert logged == 1
+    # a saved model the cache has never seen is kept
+    test_db.set_setting("model", "claude-unlisted")
+    assert gen.resolve_model() == "claude-unlisted"
+
+
+def test_route_rejects_non_structured_model(client, test_db):
+    _fake_cache = [{"id": "claude-haiku-5", "display_name": "H", "created_at": "2026-01-01",
+                    "structured_outputs": False}]
+    test_db.replace_models_cache(_fake_cache)
+    r = client.post("/settings/model", data={"model": "claude-haiku-5"})
+    assert r.status_code == 400 and "does not support structured outputs" in r.text
+    assert test_db.get_setting("model") is None
+    assert client.post("/settings/model", data={"model": "claude-unlisted"}).status_code == 200
