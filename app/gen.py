@@ -74,16 +74,23 @@ def latest_sonnet() -> str:
     return DEFAULT_MODEL
 
 
+def _supports_structured(caps) -> bool:
+    # SDK 1.x returns a typed ModelCapabilities; raw API JSON is a plain dict
+    if isinstance(caps, dict):
+        return bool((caps.get("structured_outputs") or {}).get("supported"))
+    so = getattr(caps, "structured_outputs", None)
+    return bool(getattr(so, "supported", False))
+
+
 def refresh_models() -> int:
     """Pull the model list from the API into the cache. Raises on API error."""
     models = []
     for m in _client().models.list():
-        caps = getattr(m, "capabilities", None) or {}
         models.append({
             "id": m.id,
             "display_name": m.display_name or m.id,
             "created_at": m.created_at.isoformat(),
-            "structured_outputs": bool(((caps.get("structured_outputs") or {}).get("supported"))),
+            "structured_outputs": _supports_structured(getattr(m, "capabilities", None)),
         })
     n = db.replace_models_cache(models)
     db.log("gen", f"Refreshed model list ({n} models)")

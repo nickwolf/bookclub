@@ -1,6 +1,8 @@
 from datetime import datetime
 from types import SimpleNamespace as NS
 
+from anthropic.types import CapabilitySupport, ModelCapabilities
+
 import pytest
 
 import gen
@@ -8,7 +10,8 @@ import gen
 
 def _model(mid, day, structured=True, name=None):
     return NS(id=mid, display_name=name or mid, created_at=datetime(2026, 1, day),
-              capabilities={"structured_outputs": {"supported": structured}})
+              capabilities=ModelCapabilities.model_construct(
+                  structured_outputs=CapabilitySupport(supported=structured)))
 
 
 class FakeModels:
