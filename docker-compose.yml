@@ -6,13 +6,13 @@ services:
       - TZ=${TZ}
       - HARDCOVER_TOKEN=${HARDCOVER_TOKEN}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
       - ABS_URL=${ABS_URL}
       - ABS_TOKEN=${ABS_TOKEN}
       - ABS_PLAYLIST_ID=${ABS_PLAYLIST_ID}
-    command: uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8080
     volumes:
-      # Live app code — changes on host reflect immediately without rebuild
+      # App code bind mount; no auto-reload (StatReload fails on the WSL 9P mount), so docker restart bookclub after edits
       - ./app:/app
       # Named volume for the app database
       - bookclub_data:/data

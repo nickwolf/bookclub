@@ -17,8 +17,11 @@ docker compose down
 # Restart (e.g. after config change)
 docker compose restart bookclub
 
-# Rebuild after code changes
-docker compose up -d --build
+# App code change (./app is bind-mounted, no auto-reload)
+docker restart bookclub
+
+# Dockerfile or compose change (from PowerShell; compose fails from WSL with Windows paths)
+powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose up -d --build"
 ```
 
 ---
@@ -170,11 +173,10 @@ Clear the `profile_id` cookie in your browser, or navigate to `/profiles` and sw
 
 ## Updating the App
 
-Watchtower auto-updates are disabled. To update manually after code changes:
+Watchtower auto-updates are disabled. After an app code change, run `docker restart bookclub`. After a Dockerfile or compose change, rebuild from PowerShell:
 
 ```bash
-cd /path/to/bookclub
-docker compose up -d --build
+powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose up -d --build"
 ```
 
 The database is on a named volume and is not affected by rebuilds.

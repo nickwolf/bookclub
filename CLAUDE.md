@@ -19,8 +19,11 @@ All reference material lives in `docs/`:
 ## Dev Commands
 
 ```bash
-# After any code change
-docker compose up -d --build
+# App code change (./app is bind-mounted, no auto-reload)
+docker restart bookclub
+
+# Dockerfile or compose change (run from PowerShell, not WSL)
+powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose up -d --build"
 
 # Logs
 docker logs -f bookclub

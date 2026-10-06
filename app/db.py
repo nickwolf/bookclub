@@ -19,6 +19,17 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def backup_db(dest_path: str):
+    """Write a consistent snapshot of the live DB to dest_path."""
+    src = get_conn()
+    dest = sqlite3.connect(dest_path)
+    try:
+        src.backup(dest)
+    finally:
+        dest.close()
+        src.close()
+
+
 @contextmanager
 def db():
     conn = get_conn()
