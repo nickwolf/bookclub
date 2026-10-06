@@ -655,6 +655,26 @@ def upsert_hc_book(book_id, title, author, series, series_pos, cover_url, status
         """, (book_id, title, author, series, series_pos, cover_url, status_id, rating, _now()))
 
 
+def count_hc_books() -> int:
+    with db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM hc_books").fetchone()[0]
+
+
+def prune_hc_books(seen_ids) -> int:
+    """Delete hc_books rows not in seen_ids, detaching recommendations first. Returns rows deleted."""
+    with db() as conn:
+        conn.execute("CREATE TEMP TABLE IF NOT EXISTS _hc_seen (id INTEGER PRIMARY KEY)")
+        conn.execute("DELETE FROM _hc_seen")
+        conn.executemany("INSERT OR IGNORE INTO _hc_seen (id) VALUES (?)", [(i,) for i in seen_ids])
+        conn.execute("""
+            UPDATE recommendations SET hc_book_id = NULL, updated_at = ?
+            WHERE hc_book_id IS NOT NULL AND hc_book_id NOT IN (SELECT id FROM _hc_seen)
+        """, (_now(),))
+        cur = conn.execute("DELETE FROM hc_books WHERE id NOT IN (SELECT id FROM _hc_seen)")
+        conn.execute("DROP TABLE _hc_seen")
+        return cur.rowcount
+
+
 def update_rec_cover(rec_id: int, cover_url: str):
     with db() as conn:
         conn.execute(

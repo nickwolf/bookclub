@@ -237,7 +237,7 @@ _sync_lock = threading.Lock()
 _sync_running = False
 ```
 
-The lock prevents concurrent syncs. The boolean `_sync_running` is read by `GET /sync/status` for the HTMX polling indicator. The sync itself runs in a `BackgroundTasks` callback so the POST returns immediately.
+The lock prevents concurrent syncs. The boolean `_sync_running` is read by `GET /sync/status` for the HTMX polling indicator. The sync itself runs in a `BackgroundTasks` callback so the POST returns immediately. After a Hardcover sync that pages to the end without errors, `hc_books` rows no longer on Hardcover are deleted (and `recommendations.hc_book_id` pointing at them is cleared), unless zero books came back or fewer than half of the stored rows were seen.
 
 ### Fuzzy title matching
 

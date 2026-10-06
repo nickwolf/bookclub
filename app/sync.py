@@ -29,7 +29,7 @@ ABS_PICKS_DESCRIPTION = "AI-curated recommendations already in your library, ord
 HC_QUERY = """
 query GetUserBooks($limit: Int!, $offset: Int!) {
   me {
-    user_books(limit: $limit, offset: $offset) {
+    user_books(limit: $limit, offset: $offset, order_by: {id: asc}) {
       book {
         id
         title
@@ -159,9 +159,32 @@ def _sleep(seconds: float):
     time.sleep(seconds)
 
 
+# Skip pruning if a sync saw fewer than this fraction of the rows already stored
+HC_PRUNE_MIN_FRACTION = 0.5
+
+
+def _prune_removed(seen_ids: set[int]):
+    """Delete hc_books rows missing from a clean full sync, unless the result looks suspect."""
+    if not seen_ids:
+        db.log("sync", "Hardcover returned zero books, skipping prune of removed books", level="warning")
+        return
+    stored = db.count_hc_books()
+    if len(seen_ids) < stored * HC_PRUNE_MIN_FRACTION:
+        db.log("sync", f"Hardcover sync saw {len(seen_ids)} of {stored} stored books, "
+                       "skipping prune of removed books", level="warning")
+        return
+    removed = db.prune_hc_books(seen_ids)
+    if removed:
+        db.log("sync", f"Removed {removed} books no longer on Hardcover")
+
+
 def sync_hardcover() -> int:
-    """Pull all user books from Hardcover and upsert into hc_books. Returns count synced."""
+    """Pull all user books from Hardcover and upsert into hc_books. Returns count synced.
+
+    After a sync that paged to the end without errors, books no longer on Hardcover are pruned.
+    """
     total = 0
+    seen_ids: set[int] = set()
     offset = 0
     limit = 100
 
@@ -194,12 +217,14 @@ def sync_hardcover() -> int:
                 rating = ub.get("rating")
 
                 db.upsert_hc_book(bid, title, author, series, series_pos, cover_url, status_id, rating)
+                seen_ids.add(bid)
                 total += 1
 
             offset += limit
             if len(user_books) < limit:
                 break
 
+    _prune_removed(seen_ids)
     return total
 
 
