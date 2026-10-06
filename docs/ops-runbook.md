@@ -189,7 +189,7 @@ The database is on a named volume and is not affected by rebuilds.
 |----------|----------|---------|-------------|
 | `HARDCOVER_TOKEN` | Yes | — | Hardcover API bearer token |
 | `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key for in-app recommendation generation |
-| `ANTHROPIC_MODEL` | No | `claude-sonnet-4-6` | Claude model used for generation |
+| `ANTHROPIC_MODEL` | No | (unset) | Optional override. Precedence: model saved in Settings, then this variable, then the newest cached Sonnet, then `claude-sonnet-5-5` |
 | `ABS_URL` | No | — | Audiobookshelf API base URL (e.g. `http://192.168.144.1:13378`) |
 | `ABS_TOKEN` | No | — | Audiobookshelf API bearer token |
 | `ABS_PLAYLIST_ID` | No | — | Default ABS picks playlist ID |
