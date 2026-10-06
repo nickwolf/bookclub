@@ -866,12 +866,12 @@ def get_rec_context(profile_id: int = 1) -> dict:
         top_rated = conn.execute(f"""
             SELECT title, author, series, rating
             FROM hc_books WHERE status_id = {HC_READ} AND rating >= 4
-            ORDER BY rating DESC, title LIMIT 100
+            ORDER BY rating DESC, title
         """).fetchall()
 
         want_to_read = conn.execute(f"""
             SELECT title, author FROM hc_books WHERE status_id = {HC_WANT_TO_READ}
-            ORDER BY title LIMIT 200
+            ORDER BY title
         """).fetchall()
 
         currently_reading = conn.execute(f"""
@@ -890,6 +890,13 @@ def get_rec_context(profile_id: int = 1) -> dict:
             SELECT title, author, series, rating
             FROM hc_books WHERE status_id = {HC_READ} AND rating > 0 AND rating <= 2
             ORDER BY rating ASC, title
+        """).fetchall()
+
+        other_read = conn.execute(f"""
+            SELECT title, author, series FROM hc_books
+            WHERE status_id = {HC_READ}
+              AND (rating IS NULL OR rating <= 0 OR (rating > 2 AND rating < 4))
+            ORDER BY rating DESC, title
         """).fetchall()
 
         all_read = conn.execute(f"""
@@ -925,6 +932,7 @@ def get_rec_context(profile_id: int = 1) -> dict:
         "dnf_books": [dict(r) for r in dnf_books],
         "paused_books": [dict(r) for r in paused_books],
         "low_rated_books": [dict(r) for r in low_rated],
+        "other_read_books": [dict(r) for r in other_read],
         "all_read_books": [dict(r) for r in all_read],
         "existing_recs": [dict(r) for r in existing_recs],
         "passed_with_notes": [dict(r) for r in passed_with_notes],

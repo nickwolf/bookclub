@@ -26,34 +26,33 @@ def build_prompt(ctx: dict, count: int) -> str:
     if ctx.get("preferences"):
         sections.append(f"Their stated reading preferences:\n  {ctx['preferences']}")
 
-    if ctx.get("want_to_read"):
-        lines = "\n".join(
-            f"  - {b['title']} by {b.get('author') or 'Unknown'}"
-            for b in ctx["want_to_read"][:100]
-        )
-        sections.append(
-            f"Books already on their Want-to-Read list (do NOT recommend these — "
-            f"they've already found them, but use as taste signal):\n{lines}"
-        )
+    def _fmt(b, rating=False):
+        line = f"  - {b['title']} by {b.get('author') or 'Unknown'}"
+        if b.get("series"):
+            line += f" (series: {b['series']})"
+        if rating:
+            line += f" — {b['rating']}★"
+        return line
 
-    if ctx.get("currently_reading"):
-        lines = "\n".join(
-            f"  - {b['title']} by {b.get('author') or 'Unknown'}"
-            + (f" (series: {b['series']})" if b.get("series") else "")
-            for b in ctx["currently_reading"]
-        )
-        sections.append(
-            f"Currently reading (do not recommend sequels they'll get to naturally):\n{lines}"
-        )
+    def _section(header, books, rating=False):
+        if books:
+            sections.append(f"{header}\n" + "\n".join(_fmt(b, rating) for b in books))
 
-    top_books = ctx["top_rated_books"][:60]
-    top_str = "\n".join(
-        f"  - {b['title']} by {b.get('author') or 'Unknown'}"
-        + (f" (series: {b['series']})" if b.get("series") else "")
-        + f" — {b['rating']}★"
-        for b in top_books
-    )
-    sections.append(f"Their highest-rated books from Hardcover (4–5 stars):\n{top_str}")
+    _section("Books they loved (rated 4-5 stars), the strongest taste signal:",
+             ctx.get("top_rated_books", []), rating=True)
+    _section("Books they finished but disliked (rated 1-2 stars), a strong negative "
+             "signal, so pay close attention to what these have in common:",
+             ctx.get("low_rated_books", []), rating=True)
+    _section("Other books they have read (rated 3 stars or not rated):",
+             ctx.get("other_read_books", []))
+    _section("Books they did not finish (avoid recommending similar, and pay attention "
+             "to what these have in common):", ctx.get("dnf_books", []))
+    _section("Books they started but paused (do not recommend these):",
+             ctx.get("paused_books", []))
+    _section("Currently reading (do not recommend sequels they'll get to naturally):",
+             ctx.get("currently_reading", []))
+    _section("Their Want-to-Read list (do not recommend these, they have already found "
+             "them, but use them as a taste signal):", ctx.get("want_to_read", []))
 
     if ctx.get("passed_with_notes"):
         lines = "\n".join(
@@ -70,49 +69,14 @@ def build_prompt(ctx: dict, count: int) -> str:
         )
         sections.append(f"Recommendations they've already read and rated:\n{lines}")
 
-    if ctx.get("dnf_books"):
-        lines = "\n".join(
-            f"  - {b['title']} by {b.get('author') or 'Unknown'}"
-            for b in ctx["dnf_books"]
-        )
-        sections.append(
-            f"Books they did not finish (avoid recommending similar — "
-            f"pay attention to what these have in common):\n{lines}"
-        )
-
-    if ctx.get("paused_books"):
-        lines = "\n".join(
-            f"  - {b['title']} by {b.get('author') or 'Unknown'}"
-            for b in ctx["paused_books"]
-        )
-        sections.append(
-            f"Books they started but paused (do not recommend these):\n{lines}"
-        )
-
-    if ctx.get("low_rated_books"):
-        lines = "\n".join(
-            f"  - {b['title']} by {b.get('author') or 'Unknown'} — {b['rating']}★"
-            for b in ctx["low_rated_books"]
-        )
-        sections.append(
-            f"Books they finished but rated poorly (1–2 stars) — stronger negative signal "
-            f"than DNF, pay close attention to what these have in common:\n{lines}"
-        )
-
-    all_read = ctx.get("all_read_books", [])
-    if all_read:
-        lines = "\n".join(
-            f"  - {b['title']}" + (f" by {b['author']}" if b.get("author") else "")
-            for b in all_read
-        )
-        sections.append(
-            f"Books already read — do NOT recommend any of these under any circumstances "
-            f"(this includes any format: audiobook, ebook, or print):\n{lines}"
-        )
-
     existing = [r["title"] for r in ctx.get("existing_recs", [])]
     if existing:
-        sections.append(f"Already recommended — do NOT repeat these:\n  {', '.join(existing)}")
+        sections.append("Already recommended:\n" + "\n".join(f"  - {t}" for t in existing))
+
+    sections.append(
+        "Never recommend any book or series that appears in any list above, in any "
+        "format (audiobook, ebook, or print)."
+    )
 
     sections += [
         "",

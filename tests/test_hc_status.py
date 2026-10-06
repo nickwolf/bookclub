@@ -38,3 +38,16 @@ def test_hc_rating_overwrites(test_db):
     _add(test_db, 1, "Book", test_db.HC_READ, rating=2)
     with test_db.db() as conn:
         assert conn.execute("SELECT rating FROM hc_books WHERE id = 1").fetchone()[0] == 2
+
+
+def test_full_history_in_prompt_without_overlap(test_db):
+    n = 0
+    for status, rating in [(test_db.HC_READ, 5), (test_db.HC_READ, 1), (test_db.HC_READ, 3),
+                           (test_db.HC_READ, None), (test_db.HC_WANT_TO_READ, None),
+                           (test_db.HC_DNF, None)]:
+        for i in range(70):
+            n += 1
+            _add(test_db, n, f"Title{n:04d}", status, rating)
+    prompt = gen.build_prompt(test_db.get_rec_context(), 5)
+    for i in range(1, n + 1):
+        assert prompt.count(f"Title{i:04d} by") == 1
