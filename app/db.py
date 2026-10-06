@@ -669,19 +669,19 @@ def link_rec_to_hc(rec_id: int, hc_book_id: int):
         )
 
 
-def get_blocked_title_keys() -> tuple[set[str], set[str]]:
-    """Title keys of every catalog rec and hc_book, plus series names the user has started."""
-    from textnorm import title_keys, _norm
-    keys: set[str] = set()
+def get_blocked_title_keys() -> tuple[dict[str, set[str]], set[str]]:
+    """Title key -> author surnames for every catalog rec and hc_book, plus started series names."""
+    from textnorm import add_blocked, _norm
+    keys: dict[str, set[str]] = {}
     series: set[str] = set()
     started = (HC_READ, HC_READING, HC_PAUSED, HC_DNF)
     with db() as conn:
-        for row in conn.execute("SELECT title FROM recommendations"):
-            keys |= title_keys(row[0])
-        for row in conn.execute("SELECT title, series, status_id FROM hc_books"):
-            keys |= title_keys(row[0])
-            if row[1] and row[2] in started:
-                series.add(_norm(row[1]))
+        for row in conn.execute("SELECT title, author FROM recommendations"):
+            add_blocked(keys, row[0], row[1])
+        for row in conn.execute("SELECT title, author, series, status_id FROM hc_books"):
+            add_blocked(keys, row[0], row[1])
+            if row[2] and row[3] in started:
+                series.add(_norm(row[2]))
     series.discard("")
     return keys, series
 

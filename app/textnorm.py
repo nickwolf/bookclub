@@ -6,7 +6,10 @@ import unicodedata
 
 FUZZY_CUTOFF = 0.92
 _TRAILING_PAREN = re.compile(r"\s*[\(\[][^)\]]*[\)\]]\s*$")
-_GENERIC_PART = re.compile(r"^(book|volume|vol|part)\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)?$")
+_GENERIC_PART = re.compile(
+    r"^((book|volume|vol|part)\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)?"
+    r"|(graphic )?novel|novella|memoir|thriller|story|stories|short stories|mystery|fantasy"
+    r"|romance|science fiction|sci fi)$")
 
 
 def _norm(title: str) -> str:
@@ -25,29 +28,49 @@ def title_keys(title: str) -> set[str]:
     if full:
         keys.add(full)
     if ":" in title:
-        for part in title.split(":"):
-            n = _norm(part)
-            if len(n.split()) >= 2 and not _GENERIC_PART.match(n):
+        parts = [_norm(p) for p in title.split(":")]
+        generic = any(_GENERIC_PART.match(n) for n in parts)
+        for n in parts:
+            if n and not _GENERIC_PART.match(n) and (generic or len(n.split()) >= 2):
                 keys.add(n)
     return keys
 
 
-def _is_blocked(keys: set[str], blocked: set[str]) -> bool:
-    if keys & blocked:
+def author_surnames(author: str | None) -> set[str]:
+    """Lowercased ascii last words of each name in a comma/and/ampersand separated author list."""
+    out = set()
+    for name in re.split(r",|&|\band\b", author or ""):
+        name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+        words = re.sub(r"[^\w\s]", " ", name).split()
+        if words:
+            out.add(words[-1])
+    return out
+
+
+def add_blocked(blocked: dict[str, set[str]], title: str, author: str | None = None):
+    """Record a title's keys in a key -> author-surnames map."""
+    surnames = author_surnames(author)
+    for key in title_keys(title):
+        blocked.setdefault(key, set()).update(surnames)
+
+
+def _is_blocked(keys: set[str], surnames: set[str], blocked: dict[str, set[str]]) -> bool:
+    if keys & blocked.keys():
         return True
     for key in keys:
-        for b in blocked:
+        for b, b_surnames in blocked.items():
             m = difflib.SequenceMatcher(None, key, b)
             if m.real_quick_ratio() >= FUZZY_CUTOFF and m.quick_ratio() >= FUZZY_CUTOFF \
-                    and m.ratio() >= FUZZY_CUTOFF:
+                    and m.ratio() >= FUZZY_CUTOFF \
+                    and (not surnames or not b_surnames or surnames & b_surnames):
                 return True
     return False
 
 
-def filter_duplicates(recs: list[dict], blocked_keys: set[str],
+def filter_duplicates(recs: list[dict], blocked_keys: dict[str, set[str]],
                       blocked_series: set[str] = frozenset()) -> tuple[list[dict], list[dict]]:
     """Split recs into (kept, skipped); kept recs also block later ones in the batch."""
-    blocked = set(blocked_keys)
+    blocked = {k: set(v) for k, v in blocked_keys.items()}
     kept, skipped = [], []
     for rec in recs:
         title = (rec.get("title") or "").strip()
@@ -55,13 +78,15 @@ def filter_duplicates(recs: list[dict], blocked_keys: set[str],
         if not keys:
             skipped.append(rec)
             continue
-        dup = _is_blocked(keys, blocked)
-        if not dup and rec.get("type") == "Series":
-            names = {_norm(rec.get("series") or ""), _norm(title)} - {""}
-            dup = bool(names & blocked_series)
+        dup = _is_blocked(keys, author_surnames(rec.get("author")), blocked)
+        if not dup:
+            names = {_norm(rec.get("series") or "")}
+            if rec.get("type") == "Series":
+                names.add(_norm(title))
+            dup = bool((names - {""}) & blocked_series)
         if dup:
             skipped.append(rec)
             continue
-        blocked |= keys
+        add_blocked(blocked, title, rec.get("author"))
         kept.append(rec)
     return kept, skipped
