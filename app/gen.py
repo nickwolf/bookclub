@@ -10,6 +10,7 @@ import re
 import anthropic
 
 import db
+from textnorm import filter_duplicates
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL   = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
@@ -141,27 +142,11 @@ def run_generation(profile_id: int, count: int) -> dict:
         raise
     recs = extract_json(message.content[0].text)
 
-    # Deduplicate: existing recommendations + already-read HC books
-    with db.db() as conn:
-        existing_titles = {
-            row[0].lower() for row in
-            conn.execute("SELECT title FROM recommendations").fetchall()
-        }
-    hc_read_titles = db.get_hc_read_titles()
-    blocked_titles = existing_titles | hc_read_titles
-
-    seen_in_batch: set[str] = set()
-    deduped = []
-    for rec in recs:
-        key = rec.get("title", "").strip().lower()
-        if not key:
-            continue
-        if key in blocked_titles or key in seen_in_batch:
-            db.log("gen", f"Skipped duplicate/already-read: {rec.get('title')}", level="info")
-            continue
-        seen_in_batch.add(key)
-        deduped.append(rec)
-    recs = deduped
+    # Deduplicate against the catalog, all HC books, and the batch itself
+    blocked_keys, blocked_series = db.get_blocked_title_keys()
+    recs, skipped = filter_duplicates(recs, blocked_keys, blocked_series)
+    for rec in skipped:
+        db.log("gen", f"Skipped duplicate/already-read: {rec.get('title')}", level="info")
 
     added = 0
     cover_targets: list[tuple[int, str, str]] = []

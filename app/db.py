@@ -656,12 +656,21 @@ def link_rec_to_hc(rec_id: int, hc_book_id: int):
         )
 
 
-def get_hc_read_titles() -> set[str]:
+def get_blocked_title_keys() -> tuple[set[str], set[str]]:
+    """Title keys of every catalog rec and hc_book, plus series names the user has started."""
+    from textnorm import title_keys, _norm
+    keys: set[str] = set()
+    series: set[str] = set()
+    started = (HC_READ, HC_READING, HC_PAUSED, HC_DNF)
     with db() as conn:
-        rows = conn.execute(
-            f"SELECT lower(title) FROM hc_books WHERE status_id = {HC_READ}"
-        ).fetchall()
-        return {row[0] for row in rows}
+        for row in conn.execute("SELECT title FROM recommendations"):
+            keys |= title_keys(row[0])
+        for row in conn.execute("SELECT title, series, status_id FROM hc_books"):
+            keys |= title_keys(row[0])
+            if row[1] and row[2] in started:
+                series.add(_norm(row[1]))
+    series.discard("")
+    return keys, series
 
 
 def start_sync_log() -> int:

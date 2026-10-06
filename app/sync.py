@@ -8,13 +8,12 @@ Sync logic:
 
 import json
 import os
-import re
 import difflib
 import sqlite3
-import unicodedata
 import httpx
 
 import db
+from textnorm import _norm
 
 HARDCOVER_API = "https://api.hardcover.app/v1/graphql"
 ABS_DB_PATH          = os.environ.get("ABS_DB_PATH", "/abs_config/absdatabase.sqlite")
@@ -117,14 +116,6 @@ SEED_RECOMMENDATIONS = [
 # ---------------------------------------------------------------------------
 # Normalisation helpers (shared with ABS cross-reference)
 # ---------------------------------------------------------------------------
-
-def _norm(title: str) -> str:
-    title = unicodedata.normalize("NFKD", title).encode("ascii", "ignore").decode()
-    title = title.lower()
-    title = re.sub(r"[^\w\s]", " ", title)
-    title = re.sub(r"\b(the|a|an)\b", "", title)
-    return re.sub(r"\s+", " ", title).strip()
-
 
 def _fuzzy_match(needle: str, haystack: list[str], cutoff: float = 0.72) -> bool:
     norm = _norm(needle)
