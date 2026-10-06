@@ -208,8 +208,8 @@ Bookclub cannot reach ABS by container name (different Docker networks). Use the
 ### ABS cover images
 Served via a proxy endpoint (`GET /abs/cover/{item_id}`) — fetches from ABS API with Bearer token and caches 86400s. The browser can't reach ABS directly, and the cover path is inside the ABS container's filesystem.
 
-### ABS playlist PATCH is broken
-`PATCH /api/playlists/{id}` with `{"items": [...]}` always returns `400 Invalid playlist items. Length mismatch` even for valid library item IDs. Workaround: DELETE the playlist and POST a new one with items in the creation body — this works reliably. Update the cached playlist ID after each rebuild. Playlist item format: `{"libraryItemId": "...", "episodeId": null}`.
+### ABS playlist PATCH only reorders
+`PATCH /api/playlists/{id}` with `{"items": [...]}` reorders existing items and returns `400 Invalid playlist items. Length mismatch` unless `items` is exactly the playlist's current set. Add and remove with `POST /api/playlists/{id}/batch/add` and `/batch/remove` (body `{"items": [{"libraryItemId": "...", "episodeId": null}]}`). batch/add skips items already present. **batch/remove deletes the playlist when it removes the last item**, so never push an empty list to the reading-list playlist. `sync._abs_set_playlist_items` does add, remove, then PATCH for order. A user's playlists come from `GET /api/playlists`, and each item in `GET /api/playlists/{id}` carries `libraryItemId`.
 
 ### SQL reserved word `order`
 ABS SQLite schema uses `order` as a column name in `playlistMediaItems`. Must quote it as `pmi."order"` in queries.
