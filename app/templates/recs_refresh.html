@@ -13,6 +13,8 @@
   <h2>Generate recommendations</h2>
   <p>Claude will read your reading history, ratings, and current recommendations, then suggest books that match your taste.</p>
 
+  <p class="refresh-hint">Model: <code>{{ model }}</code>. Change it in <a href="/settings#model">Settings</a>.</p>
+
   <form hx-post="/recs/generate"
         hx-target="#gen-status"
         hx-swap="outerHTML"

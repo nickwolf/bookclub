@@ -43,7 +43,42 @@ SCHEMA = {
 
 
 def resolve_model() -> str:
-    return os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
+    """Saved choice, then ANTHROPIC_MODEL, then newest cached Sonnet, then DEFAULT_MODEL."""
+    return db.get_setting("model") or os.environ.get("ANTHROPIC_MODEL") or latest_sonnet()
+
+
+def latest_sonnet() -> str:
+    """Newest cached Sonnet that supports structured outputs, else DEFAULT_MODEL."""
+    for m in db.get_cached_models(structured_only=True):
+        if m["id"].startswith("claude-sonnet-"):
+            return m["id"]
+    return DEFAULT_MODEL
+
+
+def refresh_models() -> int:
+    """Pull the model list from the API into the cache. Raises on API error."""
+    models = []
+    for m in _client().models.list():
+        caps = getattr(m, "capabilities", None) or {}
+        models.append({
+            "id": m.id,
+            "display_name": m.display_name or m.id,
+            "created_at": m.created_at.isoformat(),
+            "structured_outputs": bool(((caps.get("structured_outputs") or {}).get("supported"))),
+        })
+    n = db.replace_models_cache(models)
+    db.log("gen", f"Refreshed model list ({n} models)")
+    return n
+
+
+def refresh_models_if_empty():
+    """Startup helper: best-effort fill of an empty cache."""
+    if not api_key_configured() or db.get_cached_models():
+        return
+    try:
+        refresh_models()
+    except Exception as e:
+        db.log("gen", f"Model list refresh failed: {e!r}", level="warning")
 
 
 def _client():

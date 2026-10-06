@@ -8,6 +8,7 @@
 
 <div class="filter-tabs">
   <a href="#users"  class="filter-tab" data-tab="users">Users</a>
+  <a href="#model"  class="filter-tab" data-tab="model">AI Model</a>
   <a href="#sync"   class="filter-tab" data-tab="sync">Sync History</a>
   <a href="#log"    class="filter-tab" data-tab="log">App Log</a>
   <a href="#danger" class="filter-tab" data-tab="danger">Danger Zone</a>
@@ -113,6 +114,11 @@
     </form>
   </div>
 
+</div>
+
+<!-- ── AI Model ─────────────────────────────────────────── -->
+<div id="tab-model" class="settings-tab-panel" hidden>
+  {% include "partials/model_picker.html" %}
 </div>
 
 <!-- ── Sync History ─────────────────────────────────────── -->

@@ -42,6 +42,7 @@ def _run_gen(profile_id: int, count: int):
 def startup():
     db.init_db()
     syncer.seed_if_empty()
+    threading.Thread(target=generator.refresh_models_if_empty, daemon=True).start()
     # Auto-sync on startup if last sync was more than 1 hour ago (or never)
     if _should_auto_sync():
         t = threading.Thread(target=_run_sync, args=(1,), daemon=True)
@@ -455,6 +456,7 @@ def recs_refresh_page(request: Request):
     return _tmpl(request, "recs_refresh.html",
                  profile_id=profile_id,
                  api_key_configured=generator.api_key_configured(),
+                 model=generator.resolve_model(),
                  gen_running=_gen_running,
                  gen_last=_gen_last)
 
@@ -651,7 +653,41 @@ def rec_detail(rec_id: int, request: Request):
 def settings_page(request: Request):
     app_log = db.get_app_log(200)
     sync_history = db.get_sync_history(20)
-    return _tmpl(request, "settings.html", app_log=app_log, sync_history=sync_history)
+    return _tmpl(request, "settings.html", app_log=app_log, sync_history=sync_history,
+                 **_model_picker_ctx())
+
+
+def _model_picker_ctx(message: str | None = None, error: bool = False) -> dict:
+    return {
+        "models": db.get_cached_models(structured_only=True),
+        "selected_model": db.get_setting("model") or "",
+        "resolved_model": generator.resolve_model(),
+        "default_model": generator.latest_sonnet(),
+        "models_fetched_at": db.get_models_fetched_at(),
+        "api_key_configured": generator.api_key_configured(),
+        "picker_message": message,
+        "picker_error": error,
+    }
+
+
+@app.post("/settings/model")
+def save_model(model: str = Form("")):
+    db.set_setting("model", model.strip())
+    return HTMLResponse('<span class="save-ok">Saved ✓</span>')
+
+
+@app.post("/settings/models/refresh", response_class=HTMLResponse)
+def refresh_models(request: Request):
+    if not generator.api_key_configured():
+        msg, err = "ANTHROPIC_API_KEY is not set in .env, so the model list cannot be fetched.", True
+    else:
+        try:
+            msg, err = f"Fetched {generator.refresh_models()} models", False
+        except Exception as e:
+            db.log("gen", f"Model list refresh failed: {e!r}", level="error")
+            msg, err = f"Could not fetch models: {e}", True
+    return templates.TemplateResponse(
+        "partials/model_picker.html", {"request": request, **_model_picker_ctx(msg, err)})
 
 
 @app.post("/settings/log/clear")

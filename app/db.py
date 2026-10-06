@@ -131,6 +131,19 @@ def init_db():
             message     TEXT NOT NULL,
             detail      TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS models_cache (
+            id                 TEXT PRIMARY KEY,
+            display_name       TEXT,
+            created_at         TEXT,
+            structured_outputs INTEGER,
+            fetched_at         TEXT
+        );
         """)
 
     # Column migrations (ALTER TABLE not supported in executescript)
@@ -947,3 +960,53 @@ def get_rec_context(profile_id: int = 1) -> dict:
         "passed_with_notes": [dict(r) for r in passed_with_notes],
         "read_recs": [dict(r) for r in read_recs],
     }
+
+
+# ---------------------------------------------------------------------------
+# App settings + model cache
+# ---------------------------------------------------------------------------
+
+def get_setting(key: str) -> str | None:
+    with db() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str | None):
+    """Store a setting; an empty or None value clears it."""
+    with db() as conn:
+        if value:
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+        else:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+
+
+def replace_models_cache(models: list[dict]) -> int:
+    """Swap the cached model list in one transaction. Returns the new row count."""
+    fetched_at = _now()
+    with db() as conn:
+        conn.execute("DELETE FROM models_cache")
+        conn.executemany(
+            "INSERT OR REPLACE INTO models_cache "
+            "(id, display_name, created_at, structured_outputs, fetched_at) VALUES (?, ?, ?, ?, ?)",
+            [(m["id"], m["display_name"], m["created_at"], int(m["structured_outputs"]), fetched_at)
+             for m in models])
+    return len(models)
+
+
+def get_cached_models(structured_only: bool = False) -> list[dict]:
+    """Cached models, newest first."""
+    sql = "SELECT * FROM models_cache"
+    if structured_only:
+        sql += " WHERE structured_outputs = 1"
+    sql += " ORDER BY created_at DESC, id DESC"
+    with db() as conn:
+        return [dict(r) for r in conn.execute(sql).fetchall()]
+
+
+def get_models_fetched_at() -> str | None:
+    with db() as conn:
+        row = conn.execute("SELECT MAX(fetched_at) AS t FROM models_cache").fetchone()
+    return row["t"] if row else None
