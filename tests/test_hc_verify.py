@@ -67,6 +67,25 @@ def test_picks_matching_hit_over_decoys(hc):
     assert seen[0]["variables"]["n"] == 5
 
 
+def test_series_prefix_title_matches_most_read_volume(hc):
+    hits = [_doc(10, "Mistborn: Secret History", ["Brandon Sanderson"], users=3000),
+            _doc(11, "Mistborn: The Final Empire", ["Brandon Sanderson"], users=90000),
+            _doc(12, "Mistborn: The Final Empire", ["Somebody Else"], users=99999)]
+    m = sync.search_hc_book(_search_client([hits]), "Mistborn", "Brandon Sanderson")
+    assert m["hardcover_id"] == 11
+
+
+def test_series_prefix_needs_author(hc):
+    hits = [_doc(11, "Mistborn: The Final Empire", ["Brandon Sanderson"], users=90000)]
+    assert sync.search_hc_book(_search_client([hits]), "Mistborn", "") is None
+
+
+def test_exact_title_beats_series_prefix(hc):
+    hits = [_doc(20, "Dune: House Atreides", ["Brian Herbert", "Kevin J. Anderson"], users=50000),
+            _doc(21, "Dune", ["Frank Herbert"], users=40000)]
+    assert sync.search_hc_book(_search_client([hits]), "Dune", "Frank Herbert")["hardcover_id"] == 21
+
+
 def test_made_up_title_matches_nothing(hc):
     c = _search_client([DECOYS])
     assert sync.search_hc_book(c, "The Glass Cartographer of Velmora", "Penelope Starling") is None

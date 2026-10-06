@@ -195,7 +195,14 @@ def _hit_qualifies(doc_title: str, doc_authors: str, title: str, author: str | N
     wanted = author_surnames(author)
     if not wanted:
         return bool(want & have)
-    return _titles_agree(want, have) and bool(wanted & author_surnames(doc_authors))
+    return ((_titles_agree(want, have) or _series_prefix_match(doc_title, title))
+            and bool(wanted & author_surnames(doc_authors)))
+
+
+def _series_prefix_match(doc_title: str, title: str) -> bool:
+    """'Mistborn' for 'Mistborn: The Final Empire', a shortening title_keys can't see."""
+    key = full_title_key(title)
+    return bool(key) and ":" in doc_title and full_title_key(doc_title.split(":")[0]) == key
 
 
 def _hc_search(client: httpx.Client, title: str, author: str | None, kind: str,
@@ -211,10 +218,13 @@ def _hc_search(client: httpx.Client, title: str, author: str | None, kind: str,
     return [h.get("document") or {} for h in results.get("hits") or []]
 
 
-def _closeness(doc_title: str, title: str) -> tuple[bool, float]:
-    """Rank key: exact full-title match, then similarity (so a parenthetical edition ranks lower)."""
+def _closeness(doc_title: str, title: str) -> tuple[bool, bool, float]:
+    """Rank key: exact full-title match, then title-key agreement ranked by similarity (so a
+    parenthetical edition ranks lower). Series-prefix-only matches tie, leaving popularity to decide."""
     exact = full_title_key(doc_title) == full_title_key(title)
-    return exact, difflib.SequenceMatcher(None, _norm(doc_title), _norm(title)).ratio()
+    if not _titles_agree(title_keys(doc_title), title_keys(title)):
+        return exact, False, 0.0
+    return exact, True, difflib.SequenceMatcher(None, _norm(doc_title), _norm(title)).ratio()
 
 
 def search_hc_book(client: httpx.Client, title: str, author: str | None,
