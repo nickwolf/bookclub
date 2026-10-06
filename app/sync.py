@@ -7,6 +7,7 @@ Sync logic:
 """
 
 import json
+import time
 import os
 import difflib
 import sqlite3
@@ -139,6 +140,25 @@ def _hc_headers() -> dict:
     }
 
 
+def _hc_post(client: httpx.Client, payload: dict, attempts: int = 5) -> httpx.Response:
+    """POST to Hardcover, backing off on 429 (the token is rate limited and shared)."""
+    for attempt in range(attempts):
+        resp = client.post(HARDCOVER_API, headers=_hc_headers(), json=payload)
+        if resp.status_code != 429 or attempt == attempts - 1:
+            resp.raise_for_status()
+            return resp
+        try:
+            wait = float(resp.headers.get("retry-after", ""))
+        except ValueError:
+            wait = 2 ** (attempt + 2)
+        db.log("sync", f"Hardcover rate limited, retrying in {wait:.0f}s", level="warning")
+        _sleep(min(wait, 60))
+
+
+def _sleep(seconds: float):
+    time.sleep(seconds)
+
+
 def sync_hardcover() -> int:
     """Pull all user books from Hardcover and upsert into hc_books. Returns count synced."""
     total = 0
@@ -147,12 +167,8 @@ def sync_hardcover() -> int:
 
     with httpx.Client(timeout=30) as client:
         while True:
-            resp = client.post(
-                HARDCOVER_API,
-                headers=_hc_headers(),
-                json={"query": HC_QUERY, "variables": {"limit": limit, "offset": offset}},
-            )
-            resp.raise_for_status()
+            resp = _hc_post(client, {"query": HC_QUERY,
+                                     "variables": {"limit": limit, "offset": offset}})
             data = resp.json()
             if "errors" in data:
                 raise RuntimeError(f"Hardcover API error: {data['errors']}")
