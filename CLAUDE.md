@@ -20,11 +20,15 @@ All reference material lives in `docs/`:
 ## Dev Commands
 
 ```bash
-# App code change (./app is bind-mounted, no auto-reload)
+# Production runs the published GHCR image; development uses the dev overlay
+# (./app is bind-mounted, no auto-reload)
 docker restart bookclub
 
 # Dockerfile or compose change (run from PowerShell, not WSL)
-powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose up -d --build"
+powershell.exe -NonInteractive -Command "cd C:\Tools\bookclub; docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build"
+
+# Release: tag vX.Y.Z and push the tag; the workflow publishes to GHCR,
+# Watchtower picks it up within 6h
 
 # Logs
 docker logs -f bookclub
