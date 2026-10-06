@@ -302,3 +302,52 @@ def test_push_reads_queue_at_run_time(reading_list, test_db):
     test_db.reorder_queue([recs["b"], recs["a"]], 1)
     sync.push_queue_to_abs(1, reorder=True)
     assert fake.playlists["p1"]["items"] == ["b", "a"]
+
+
+def test_push_remove_skips_item_still_queued_via_other_rec(reading_list, test_db):
+    fake, recs = reading_list(["a", "b"], ["a"])
+    twin = test_db.upsert_recommendation("A twin", "A", None, "Book", "Yes", "r")
+    with test_db.db() as conn:
+        conn.execute("UPDATE recommendations SET abs_library_item_id = 'a' WHERE id = ?", (twin,))
+    test_db.add_to_queue(twin, 1)
+    test_db.remove_from_queue(recs["a"], 1)
+    sync.push_queue_to_abs(1, remove=[recs["a"]])
+    assert fake.writes() == []
+    assert fake.playlists["p1"]["items"] == ["a", "b"]
+
+
+def test_remove_from_queue_reports_deletion(reading_list, test_db):
+    fake, recs = reading_list(["a"], ["a"])
+    assert test_db.remove_from_queue(recs["b"], 1) is False
+    assert test_db.remove_from_queue(recs["a"], 1) is True
+    assert test_db.remove_from_queue(recs["a"], 1) is False
+
+
+def test_move_and_reorder_report_change(reading_list, test_db):
+    fake, recs = reading_list(["a", "b"], ["a", "b"])
+    with test_db.db() as conn:
+        qid = {r["rec_id"]: r["id"] for r in conn.execute("SELECT id, rec_id FROM queue")}
+    assert test_db.move_queue_item(qid[recs["a"]], "up", 1) is False
+    assert test_db.move_queue_item(qid[recs["b"]], "down", 1) is False
+    assert test_db.reorder_queue([recs["a"], recs["b"]], 1) is False
+    assert test_db.move_queue_item(qid[recs["a"]], "down", 1) is True
+    assert test_db.reorder_queue([recs["a"], recs["b"]], 1) is True
+
+
+def test_routes_push_only_on_real_change(client, reading_list, test_db, monkeypatch):
+    import main
+    fake, recs = reading_list(["a", "b"], ["a", "b"])
+    pushed = []
+    monkeypatch.setattr(main, "push_queue_to_abs", lambda *a, **k: pushed.append((a, k)))
+    client.post(f"/rec/{recs['c']}/pass")
+    client.post(f"/rec/{recs['c']}/read")
+    client.post(f"/queue/{recs['c']}/remove")
+    client.post(f"/review/{recs['c']}/pass")
+    with test_db.db() as conn:
+        qid = {r["rec_id"]: r["id"] for r in conn.execute("SELECT id, rec_id FROM queue")}
+    client.post(f"/queue/{qid[recs['a']]}/move/up")
+    client.post("/queue/reorder", data={"rec_ids[]": [recs["a"], recs["b"]]})
+    assert pushed == []
+    client.post(f"/queue/{recs['a']}/remove")
+    client.post(f"/queue/{qid[recs['b']]}/move/down")
+    assert len(pushed) == 1

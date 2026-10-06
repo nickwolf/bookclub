@@ -452,23 +452,27 @@ def add_to_queue(rec_id: int, profile_id: int = 1, notes: str = "") -> int:
         return cur.lastrowid
 
 
-def remove_from_queue(rec_id: int, profile_id: int = 1):
+def remove_from_queue(rec_id: int, profile_id: int = 1) -> bool:
+    """Drop a rec from the queue. True only if a queue row was deleted."""
     with db() as conn:
-        conn.execute("DELETE FROM queue WHERE rec_id = ? AND profile_id = ?", (rec_id, profile_id))
+        deleted = conn.execute("DELETE FROM queue WHERE rec_id = ? AND profile_id = ?",
+                               (rec_id, profile_id)).rowcount > 0
         conn.execute("""
             UPDATE rec_interactions SET user_status = 'pending', updated_at = ?
             WHERE rec_id = ? AND profile_id = ? AND user_status = 'queued'
         """, (_now(), rec_id, profile_id))
         _reorder_queue(conn, profile_id)
+    return deleted
 
 
-def move_queue_item(queue_id: int, direction: str, profile_id: int = 1):
+def move_queue_item(queue_id: int, direction: str, profile_id: int = 1) -> bool:
+    """Swap an item with its neighbour. True only if the order changed."""
     with db() as conn:
         item = conn.execute(
             "SELECT * FROM queue WHERE id = ? AND profile_id = ?", (queue_id, profile_id)
         ).fetchone()
         if not item:
-            return
+            return False
         pos = item["position"]
         if direction == "up" and pos > 1:
             swap_pos = pos - 1
@@ -477,24 +481,31 @@ def move_queue_item(queue_id: int, direction: str, profile_id: int = 1):
                 "SELECT MAX(position) FROM queue WHERE profile_id = ?", (profile_id,)
             ).fetchone()[0]
             if pos >= max_pos:
-                return
+                return False
             swap_pos = pos + 1
         else:
-            return
+            return False
         conn.execute(
             "UPDATE queue SET position = ? WHERE position = ? AND profile_id = ?",
             (pos, swap_pos, profile_id)
         )
         conn.execute("UPDATE queue SET position = ? WHERE id = ?", (swap_pos, queue_id))
+    return True
 
 
-def reorder_queue(rec_ids: list[int], profile_id: int = 1):
+def reorder_queue(rec_ids: list[int], profile_id: int = 1) -> bool:
+    """Apply a full order. True only if any position changed."""
     with db() as conn:
+        before = conn.execute("SELECT rec_id, position FROM queue WHERE profile_id = ?",
+                              (profile_id,)).fetchall()
         for i, rec_id in enumerate(rec_ids, 1):
             conn.execute(
                 "UPDATE queue SET position = ? WHERE rec_id = ? AND profile_id = ?",
                 (i, rec_id, profile_id)
             )
+        after = conn.execute("SELECT rec_id, position FROM queue WHERE profile_id = ?",
+                             (profile_id,)).fetchall()
+    return {tuple(r) for r in before} != {tuple(r) for r in after}
 
 
 def _reorder_queue(conn, profile_id: int = 1):

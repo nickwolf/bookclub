@@ -555,7 +555,9 @@ def push_queue_to_abs(profile_id: int = 1, add=(), remove=(), reorder: bool = Fa
         local_order = [row["abs_library_item_id"] for row in queue_rows]
         # An add since undone, or a remove since redone, is no longer ours to push
         add_ids = _abs_item_ids_for_recs([r for r in add if r in in_queue])
-        remove_ids = _abs_item_ids_for_recs([r for r in remove if r not in in_queue])
+        # Another queued rec may share the ABS item, so keep anything still queued
+        remove_ids = [i for i in _abs_item_ids_for_recs([r for r in remove if r not in in_queue])
+                      if i not in set(local_order)]
         if not (add_ids or remove_ids or reorder):
             return False
         try:
