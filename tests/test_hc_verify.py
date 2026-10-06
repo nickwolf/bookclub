@@ -151,7 +151,7 @@ def _logs(db):
 def test_generation_enriches_matched_and_drops_unmatched(run, test_db):
     recs = [_rec("Will of the Many", series="", author="James Islington"),
             _rec("The Glass Cartographer of Velmora", author="Penelope Starling")]
-    assert run(recs, [[WILL], DECOYS]) == {"added": 1}
+    assert run(recs, [[WILL], DECOYS, DECOYS]) == {"added": 1, "unverified": 0}
     rows = _rows(test_db)
     assert set(rows) == {"The Will of the Many"}
     r = rows["The Will of the Many"]
@@ -163,13 +163,13 @@ def test_generation_enriches_matched_and_drops_unmatched(run, test_db):
 
 def test_match_keeps_model_author_over_contributor_list(run, test_db):
     dcc = _doc(446681, "Dungeon Crawler Carl", ["Matt Dinniman", "Will Staehle"], users=9000)
-    assert run([_rec("Dungeon Crawler Carl", author="Matt Dinniman")], [[dcc]]) == {"added": 1}
+    assert run([_rec("Dungeon Crawler Carl", author="Matt Dinniman")], [[dcc]]) == {"added": 1, "unverified": 0}
     assert _rows(test_db)["Dungeon Crawler Carl"]["author"] == "Matt Dinniman"
 
 
 def test_circuit_breaker_keeps_unverified_and_stops(run, test_db):
     recs = [_rec("One", author="A"), _rec("Two", author="A"), _rec("Three", author="A")]
-    assert run(recs, [500]) == {"added": 3}
+    assert run(recs, [500]) == {"added": 3, "unverified": 3}
     rows = _rows(test_db)
     assert all(r["hardcover_id"] is None for r in rows.values())
     assert len(run.covers) == 3
@@ -179,7 +179,7 @@ def test_circuit_breaker_keeps_unverified_and_stops(run, test_db):
 
 def test_no_token_keeps_unverified(run, test_db, monkeypatch):
     monkeypatch.setattr(sync, "HARDCOVER_TOKEN", "")
-    assert run([_rec("One")], []) == {"added": 1}
+    assert run([_rec("One")], []) == {"added": 1, "unverified": 1}
     assert _rows(test_db)["One"]["hardcover_id"] is None
 
 
@@ -193,7 +193,7 @@ def test_id_dedup_against_shelf_catalog_and_batch(run, test_db):
             [_doc(200, "Cat Book", ["Cat Author"])],
             [_doc(300, "Fresh One", ["New Author"])],
             [_doc(300, "Fresh One", ["New Author"])]]
-    assert run(recs, resp) == {"added": 1}
+    assert run(recs, resp) == {"added": 1, "unverified": 0}
     assert "Fresh One" in _rows(test_db)
     assert set(_rows(test_db)) == {"Cat Book", "Fresh One"}
 
@@ -253,7 +253,7 @@ def test_series_search_picks_most_read_and_rejects_decoy(hc):
 
 def test_series_rec_falls_back_to_series_search(run, test_db):
     rec = _series_rec("Stormlight Archive")
-    assert run([rec], [DECOYS, STORM]) == {"added": 1}
+    assert run([rec], [DECOYS, DECOYS, STORM]) == {"added": 1, "unverified": 0}
     r = _rows(test_db)["The Stormlight Archive"]
     assert (r["series"], r["hardcover_id"], r["series_pos"], r["cover_url"]) == (
         "The Stormlight Archive", None, None, None)
@@ -262,19 +262,19 @@ def test_series_rec_falls_back_to_series_search(run, test_db):
 
 def test_unmatched_series_rec_dropped(run, test_db):
     assert run([_series_rec("Velmora Cycle", "Penelope Starling")],
-               [DECOYS, [STORM[0]]]) == {"added": 0}
+               [DECOYS, DECOYS, [STORM[0]]]) == {"added": 0, "unverified": 0}
 
 
 def test_book_rec_does_not_trigger_series_search(run, test_db):
     seen = []
     run.seen = seen
-    assert run([_rec("Velmora", author="Penelope Starling")], [DECOYS]) == {"added": 0}
-    assert [q["variables"]["t"] for q in seen] == ["Book"]
+    assert run([_rec("Velmora", author="Penelope Starling")], [DECOYS, DECOYS]) == {"added": 0, "unverified": 0}
+    assert [q["variables"]["t"] for q in seen] == ["Book", "Book"]
 
 
 def test_series_search_error_trips_breaker(run, test_db):
     recs = [_series_rec(), _rec("Two", author="A")]
-    assert run(recs, [DECOYS, 500]) == {"added": 2}
+    assert run(recs, [DECOYS, DECOYS, 500]) == {"added": 2, "unverified": 2}
     assert all(r["hardcover_id"] is None for r in _rows(test_db).values())
     assert len([m for m in _logs(test_db) if "verification failed" in m]) == 1
 
@@ -283,3 +283,91 @@ def test_num_filter():
     import main
     f = main.templates.env.filters["num"]
     assert f(1.0) == "1" and f(2.5) == "2.5"
+
+
+FOUNDATION = [
+    _doc(1, "Foundation: Book Two", ["Isaac Asimov"], users=9000),
+    _doc(2, "Foundation: Book One", ["Isaac Asimov"], users=8000),
+    _doc(3, "Foundation", ["Isaac Asimov"], users=100),
+]
+
+
+def test_exact_title_beats_popular_sibling_volume(hc):
+    m = sync.search_hc_book(_search_client([FOUNDATION]), "Foundation", "Isaac Asimov")
+    assert m["hardcover_id"] == 3
+
+
+def test_series_hit_ranked_by_title_closeness_first(hc):
+    docs = [_sdoc(1, "The Stormlight Archive (Split Volume Edition)", "Brandon Sanderson", 99999),
+            _sdoc(2, "The Stormlight Archive", "Brandon Sanderson", 5)]
+    m = sync.search_hc_series(_search_client([docs]), "The Stormlight Archive", "Brandon Sanderson")
+    assert m["title"] == "The Stormlight Archive"
+
+
+def test_title_only_retry_rescues_a_miss(run, test_db):
+    seen = []
+    run.seen = seen
+    rec = _rec("The Will of the Many", author="James Islington")
+    assert run([rec], [DECOYS, [WILL]]) == {"added": 1, "unverified": 0}
+    assert seen[0]["variables"]["q"] == "The Will of the Many James Islington"
+    assert seen[1]["variables"]["q"] == "The Will of the Many"
+    assert seen[1]["variables"]["n"] == 10
+    assert _rows(test_db)["The Will of the Many"]["hardcover_id"] == 594985
+
+
+def test_budget_trips_breaker_and_counts_unverified(run, test_db, monkeypatch):
+    ticks = iter([0, 0, 500, 500, 500])
+    monkeypatch.setattr(gen, "_monotonic", lambda: next(ticks))
+    recs = [_rec("Will of the Many", author="James Islington"),
+            _rec("Two", author="A"), _rec("Three", author="A")]
+    assert run(recs, [[WILL]]) == {"added": 3, "unverified": 2}
+    assert any("ran out of time" in m for m in _logs(test_db))
+
+
+def test_verification_limits_rate_limit_waits(hc, monkeypatch):
+    slept = []
+    monkeypatch.setattr(sync, "_sleep", slept.append)
+    c = httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(429, headers={"retry-after": "60"}, json={})))
+    with pytest.raises(httpx.HTTPStatusError):
+        sync.search_hc_book(c, "T", "A", attempts=3, max_wait=20)
+    assert slept == [20, 20]
+
+
+def test_cover_precedence(test_db):
+    test_db.upsert_hc_book(1, "Vol 1", "A", "S", 1, "shelf.jpg", 3, None)
+    verified = test_db.upsert_recommendation("Vol 2", "A", "S", "Book", "Yes", "r",
+                                             hardcover_id=9, cover_url="verified.jpg")
+    unverified = test_db.upsert_recommendation("Vol 3", "A", "S", "Book", "Yes", "r",
+                                               cover_url="ol.jpg")
+    assert test_db.get_rec_detail(verified)["cover_url"] == "verified.jpg"
+    assert test_db.get_rec_detail(unverified)["cover_url"] == "shelf.jpg"
+
+
+def test_known_hardcover_id_off_shelf_is_not_fuzzy_linked(test_db):
+    test_db.upsert_hc_book(50, "Same Title", "A", None, None, None, 3, None)
+    rid = test_db.upsert_recommendation("Same Title", "A", None, "Book", "Yes", "r",
+                                        hardcover_id=999)
+    with test_db.db() as conn:
+        rows = conn.execute(
+            "SELECT id, title, hc_book_id, hardcover_id FROM recommendations").fetchall()
+    sync.link_recs_to_hc(rows)
+    with test_db.db() as conn:
+        assert conn.execute("SELECT hc_book_id FROM recommendations WHERE id = ?",
+                            (rid,)).fetchone()[0] is None
+
+
+def test_card_series_position_precedence(client, test_db):
+    rid = test_db.upsert_recommendation("T", "A", "S", "Book", "Yes", "r", series_pos=2.0)
+    assert " #2" in client.get(f"/rec/{rid}/detail").text
+    with test_db.db() as conn:
+        conn.execute("UPDATE recommendations SET abs_series_seq = '3' WHERE id = ?", (rid,))
+    row = test_db.get_rec_detail(rid)
+    assert row["abs_series_seq"] == "3" and row["series_pos"] == 2.0
+
+
+def test_status_shows_unverified_note(client):
+    import main
+    main._gen_last = {"added": 4, "unverified": 3, "error": None, "finished_at": None}
+    assert "3 not verified, Hardcover was unavailable." in client.get("/recs/generate/status", headers={"HX-Request": "true"}).text
+    main._gen_last = None

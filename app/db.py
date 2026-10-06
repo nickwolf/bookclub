@@ -248,7 +248,7 @@ def update_profile_picks_playlist_id(profile_id: int, playlist_id: str | None):
 # ---------------------------------------------------------------------------
 
 _REC_COLS = f"""
-    r.id, r.hc_book_id, r.hardcover_id, r.title, r.author, r.series, r.series_pos, r.type,
+    r.id, r.hc_book_id, r.hardcover_id, r.title, r.author, r.series, r.series_pos, r.abs_series_seq, r.type,
     r.audiobook_available, r.in_abs_library, r.abs_progress, r.abs_finished,
     r.reason, r.tags, r.source, r.confidence, r.created_at, r.updated_at,
     COALESCE(ri.user_status, 'pending') AS user_status,
@@ -258,6 +258,7 @@ _REC_COLS = f"""
     q.position                          AS queue_pos,
     COALESCE(
         h.cover_url,
+        CASE WHEN r.hardcover_id IS NOT NULL THEN r.cover_url END,
         (SELECT h2.cover_url FROM hc_books h2
          WHERE r.series IS NOT NULL AND r.series != ''
            AND h2.series = r.series AND h2.series_pos > 0
@@ -443,7 +444,7 @@ def get_rec_detail(rec_id: int, profile_id: int = 1) -> sqlite3.Row | None:
         return conn.execute(f"""
             SELECT {_REC_COLS},
                    r.abs_description, r.abs_duration, r.abs_narrator,
-                   r.abs_genres, r.abs_series_seq
+                   r.abs_genres
             {_REC_JOINS}
             WHERE r.id = :rec_id
         """, {"pid": profile_id, "rec_id": rec_id}).fetchone()

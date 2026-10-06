@@ -15,7 +15,7 @@ import threading
 import httpx
 
 import db
-from textnorm import _norm, author_surnames, title_keys
+from textnorm import _norm, author_surnames, full_title_key, title_keys
 
 HARDCOVER_API = "https://api.hardcover.app/v1/graphql"
 ABS_DB_PATH          = os.environ.get("ABS_DB_PATH", "/abs_config/absdatabase.sqlite")
@@ -151,7 +151,8 @@ def _hc_headers() -> dict:
     }
 
 
-def _hc_post(client: httpx.Client, payload: dict, attempts: int = 5) -> httpx.Response:
+def _hc_post(client: httpx.Client, payload: dict, attempts: int = 5,
+             max_wait: float = 60) -> httpx.Response:
     """POST to Hardcover, backing off on 429 (the token is rate limited and shared)."""
     for attempt in range(attempts):
         resp = client.post(HARDCOVER_API, headers=_hc_headers(), json=payload)
@@ -163,7 +164,7 @@ def _hc_post(client: httpx.Client, payload: dict, attempts: int = 5) -> httpx.Re
         except ValueError:
             wait = 2 ** (attempt + 2)
         db.log("sync", f"Hardcover rate limited, retrying in {wait:.0f}s", level="warning")
-        _sleep(min(wait, 60))
+        _sleep(min(wait, max_wait))
 
 
 def _sleep(seconds: float):
@@ -176,6 +177,7 @@ query Search($q: String!, $t: String!, $n: Int!) {
 }
 """
 HC_SEARCH_HITS = 5
+HC_TITLE_ONLY_HITS = 10
 HC_TITLE_CUTOFF = 0.9
 
 
@@ -196,11 +198,12 @@ def _hit_qualifies(doc_title: str, doc_authors: str, title: str, author: str | N
     return _titles_agree(want, have) and bool(wanted & author_surnames(doc_authors))
 
 
-def _hc_search(client: httpx.Client, title: str, author: str | None, kind: str) -> list[dict]:
+def _hc_search(client: httpx.Client, title: str, author: str | None, kind: str,
+               hits: int = HC_SEARCH_HITS, **post_kw) -> list[dict]:
     """Search documents of the given query type ("Book" or "Series"). Raises on API errors."""
     resp = _hc_post(client, {"query": HC_SEARCH_QUERY,
                              "variables": {"q": f"{title} {author or ''}".strip(),
-                                           "t": kind, "n": HC_SEARCH_HITS}})
+                                           "t": kind, "n": hits}}, **post_kw)
     body = resp.json()
     if body.get("errors"):
         raise RuntimeError(f"Hardcover search error: {body['errors']}")
@@ -208,15 +211,29 @@ def _hc_search(client: httpx.Client, title: str, author: str | None, kind: str) 
     return [h.get("document") or {} for h in results.get("hits") or []]
 
 
-def search_hc_book(client: httpx.Client, title: str, author: str | None) -> dict | None:
-    """Best Hardcover book match for a title and author, or None. Raises on API errors."""
-    docs = [d for d in _hc_search(client, title, author, "Book")
+def _closeness(doc_title: str, title: str) -> tuple[bool, float]:
+    """Rank key: exact full-title match, then similarity (so a parenthetical edition ranks lower)."""
+    exact = full_title_key(doc_title) == full_title_key(title)
+    return exact, difflib.SequenceMatcher(None, _norm(doc_title), _norm(title)).ratio()
+
+
+def search_hc_book(client: httpx.Client, title: str, author: str | None,
+                   title_only: bool = False, **post_kw) -> dict | None:
+    """Best Hardcover book match for a title and author, or None. Raises on API errors.
+
+    title_only leaves the author out of the query (and widens it) but still requires the
+    author to agree on the hits.
+    """
+    hits = _hc_search(client, title, None if title_only else author, "Book",
+                      HC_TITLE_ONLY_HITS if title_only else HC_SEARCH_HITS, **post_kw)
+    docs = [d for d in hits
             if d.get("id") and _hit_qualifies(d.get("title") or "",
                                               ", ".join(d.get("author_names") or []),
                                               title, author)]
     if not docs:
         return None
-    best = max(docs, key=lambda d: d.get("users_count") or 0)
+    best = max(docs, key=lambda d: (*_closeness(d.get("title") or "", title),
+                                    d.get("users_count") or 0))
     featured = best.get("featured_series") or {}
     return {
         "hardcover_id": int(best["id"]),
@@ -228,14 +245,16 @@ def search_hc_book(client: httpx.Client, title: str, author: str | None) -> dict
     }
 
 
-def search_hc_series(client: httpx.Client, title: str, author: str | None) -> dict | None:
+def search_hc_series(client: httpx.Client, title: str, author: str | None,
+                     **post_kw) -> dict | None:
     """Best Hardcover series match (name and author only), or None. Raises on API errors."""
-    docs = [d for d in _hc_search(client, title, author, "Series")
+    docs = [d for d in _hc_search(client, title, author, "Series", **post_kw)
             if d.get("id") and _hit_qualifies(d.get("name") or "", d.get("author_name") or "",
                                               title, author)]
     if not docs:
         return None
-    best = max(docs, key=lambda d: d.get("readers_count") or 0)
+    best = max(docs, key=lambda d: (*_closeness(d.get("name") or "", title),
+                                    d.get("readers_count") or 0))
     return {"title": best["name"], "author": best.get("author_name") or author}
 
 
@@ -739,8 +758,9 @@ def link_recs_to_hc(rec_rows: list):
     for rec in rec_rows:
         if rec["hc_book_id"]:
             continue
-        if rec["hardcover_id"] in shelf_ids:
-            db.link_rec_to_hc(rec["id"], rec["hardcover_id"])
+        if rec["hardcover_id"] is not None:
+            if rec["hardcover_id"] in shelf_ids:
+                db.link_rec_to_hc(rec["id"], rec["hardcover_id"])
             continue
         norm = _norm(rec["title"])
         matches = difflib.get_close_matches(norm, hc_norms, n=1, cutoff=0.8)

@@ -66,7 +66,7 @@ def _titles(db):
 
 def test_happy_path_inserts(fake, test_db):
     client = fake(_msg([_text([_rec("One"), _rec("Two", series="S")])]))
-    assert gen.run_generation(1, 2) == {"added": 2}
+    assert gen.run_generation(1, 2) == {"added": 2, "unverified": 2}
     rows = _titles(test_db)
     assert set(rows) == {"One", "Two"}
     call = client.calls[0]
@@ -85,7 +85,7 @@ def test_empty_series_becomes_null(fake, test_db):
 
 def test_thinking_block_before_text(fake, test_db):
     fake(_msg([NS(type="thinking", thinking="hmm"), _text([_rec("One")])]))
-    assert gen.run_generation(1, 1) == {"added": 1}
+    assert gen.run_generation(1, 1) == {"added": 1, "unverified": 1}
 
 
 def test_truncated_raises(fake, test_db):

@@ -36,6 +36,11 @@ def title_keys(title: str) -> set[str]:
     return keys
 
 
+def full_title_key(title: str) -> str:
+    """Normalized title with any trailing parenthetical removed."""
+    return _norm(_TRAILING_PAREN.sub("", title or "").strip())
+
+
 _PLACEHOLDER_AUTHORS = {"unknown", "unknown author", "anonymous", "n/a", "na", "various"}
 
 

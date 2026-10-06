@@ -5,6 +5,7 @@ Mirrors the logic in refresh_recs.py but runs inside the container.
 
 import json
 import os
+import time
 
 import anthropic
 import httpx
@@ -15,6 +16,9 @@ from textnorm import filter_duplicates
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 DEFAULT_MODEL = "claude-sonnet-5-5"
+VERIFY_BUDGET = 120.0  # seconds of Hardcover verification before giving up on the batch
+VERIFY_ATTEMPTS = 3
+VERIFY_MAX_WAIT = 20
 VERIFY_PAUSE = 1.0  # seconds between Hardcover searches, to stay under the burst limit
 
 SCHEMA = {
@@ -291,6 +295,7 @@ def run_generation(profile_id: int, count: int) -> dict:
         db.log("gen", f"Skipped duplicate/already-read: {rec.get('title')}", level="info")
 
     added = 0
+    unverified = 0
     cover_targets: list[tuple[int, str, str]] = []
     for rec in recs:
         tags_list = rec.get("tags") or []
@@ -313,43 +318,59 @@ def run_generation(profile_id: int, count: int) -> dict:
         if not rec.get("cover_url"):
             cover_targets.append((rec_id, rec.get("title", ""), rec.get("author", "")))
         added += 1
+        unverified += bool(rec.get("_unverified"))
 
     # Fetch Open Library covers synchronously (best-effort)
     _fetch_covers_sync(cover_targets)
 
-    db.log("gen", f"Generation complete, added {added} recommendations")
-    return {"added": added}
+    db.log("gen", f"Generation complete, added {added} recommendations "
+                  f"({unverified} not verified)")
+    return {"added": added, "unverified": unverified}
+
+
+def _monotonic() -> float:
+    return time.monotonic()
 
 
 def _verify_recs(recs: list) -> list:
     """Match each rec to a Hardcover book, dropping unmatched ones.
 
-    Hardcover being down or unconfigured keeps the remaining recs unverified.
+    Hardcover being down, unconfigured or too slow keeps the remaining recs, flagged
+    with "_unverified", rather than failing generation.
     """
     if not sync.HARDCOVER_TOKEN:
         db.log("gen", "HARDCOVER_TOKEN not set, recommendations not verified", level="warning")
-        return recs
+        return [{**r, "_unverified": True} for r in recs]
     out = []
     failed = False
+    kw = {"attempts": VERIFY_ATTEMPTS, "max_wait": VERIFY_MAX_WAIT}
+    deadline = _monotonic() + VERIFY_BUDGET
     with httpx.Client(timeout=15) as client:
         for i, rec in enumerate(recs):
+            if not failed and _monotonic() > deadline:
+                db.log("gen", "Hardcover verification ran out of time, keeping the rest "
+                              "unverified", level="warning")
+                failed = True
             if failed:
-                out.append(rec)
+                out.append({**rec, "_unverified": True})
                 continue
-            if i:
-                sync._sleep(VERIFY_PAUSE)
+            title, author = rec.get("title") or "", rec.get("author")
             try:
-                title, author = rec.get("title") or "", rec.get("author")
-                match = sync.search_hc_book(client, title, author)
+                if i:
+                    sync._sleep(VERIFY_PAUSE)
+                match = sync.search_hc_book(client, title, author, **kw)
+                if match is None:
+                    sync._sleep(VERIFY_PAUSE)
+                    match = sync.search_hc_book(client, title, author, title_only=True, **kw)
                 series_match = None
                 if match is None and rec.get("type") == "Series":
                     sync._sleep(VERIFY_PAUSE)
-                    series_match = sync.search_hc_series(client, title, author)
+                    series_match = sync.search_hc_series(client, title, author, **kw)
             except Exception as e:
                 db.log("gen", f"Hardcover verification failed, keeping the rest unverified: {e!r}",
                        level="warning")
                 failed = True
-                out.append(rec)
+                out.append({**rec, "_unverified": True})
                 continue
             if series_match:
                 out.append({**rec, "title": series_match["title"],
