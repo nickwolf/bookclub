@@ -10,6 +10,14 @@ def _now() -> str:
 
 DB_PATH = os.environ.get("DB_PATH", "/data/bookclub.db")
 
+# Hardcover user_book_statuses
+HC_WANT_TO_READ = 1
+HC_READING = 2
+HC_READ = 3
+HC_PAUSED = 4
+HC_DNF = 5
+HC_IGNORED = 6
+
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -224,7 +232,7 @@ def update_profile_picks_playlist_id(profile_id: int, playlist_id: str | None):
 # Recommendation queries
 # ---------------------------------------------------------------------------
 
-_REC_COLS = """
+_REC_COLS = f"""
     r.id, r.hc_book_id, r.title, r.author, r.series, r.type,
     r.audiobook_available, r.in_abs_library, r.abs_progress, r.abs_finished,
     r.reason, r.tags, r.source, r.confidence, r.created_at, r.updated_at,
@@ -241,9 +249,9 @@ _REC_COLS = """
          ORDER BY h2.series_pos ASC LIMIT 1),
         r.cover_url
     ) AS cover_url,
-    CASE WHEN h.status_id = 1
+    CASE WHEN h.status_id = {HC_WANT_TO_READ}
               OR EXISTS(SELECT 1 FROM hc_books h3
-                        WHERE lower(h3.title) = lower(r.title) AND h3.status_id = 1)
+                        WHERE lower(h3.title) = lower(r.title) AND h3.status_id = {HC_WANT_TO_READ})
          THEN 1 ELSE 0 END AS on_want_to_read
 """
 
@@ -618,7 +626,7 @@ def upsert_hc_book(book_id, title, author, series, series_pos, cover_url, status
             ON CONFLICT(id) DO UPDATE SET
               title=excluded.title, author=excluded.author, series=excluded.series,
               series_pos=excluded.series_pos, cover_url=excluded.cover_url,
-              status_id=excluded.status_id, rating=excluded.rating,
+              status_id=excluded.status_id, rating=COALESCE(excluded.rating, hc_books.rating),
               synced_at=excluded.synced_at
         """, (book_id, title, author, series, series_pos, cover_url, status_id, rating, _now()))
 
@@ -651,7 +659,7 @@ def link_rec_to_hc(rec_id: int, hc_book_id: int):
 def get_hc_read_titles() -> set[str]:
     with db() as conn:
         rows = conn.execute(
-            "SELECT lower(title) FROM hc_books WHERE status_id = 3"
+            f"SELECT lower(title) FROM hc_books WHERE status_id = {HC_READ}"
         ).fetchall()
         return {row[0] for row in rows}
 
@@ -794,9 +802,9 @@ def get_stats(profile_id: int = 1) -> dict:
         passed  = conn.execute("SELECT COUNT(*) FROM rec_interactions WHERE profile_id=? AND user_status='pass'", (profile_id,)).fetchone()[0]
         read    = conn.execute("SELECT COUNT(*) FROM rec_interactions WHERE profile_id=? AND user_status='read'", (profile_id,)).fetchone()[0]
         in_lib  = conn.execute("SELECT COUNT(*) FROM recommendations WHERE in_abs_library=1").fetchone()[0]
-        hc_read    = conn.execute("SELECT COUNT(*) FROM hc_books WHERE status_id=3").fetchone()[0]
-        hc_want    = conn.execute("SELECT COUNT(*) FROM hc_books WHERE status_id=1").fetchone()[0]
-        unrated_hc   = conn.execute("SELECT COUNT(*) FROM hc_books WHERE status_id=3 AND (rating IS NULL OR rating=0)").fetchone()[0]
+        hc_read    = conn.execute(f"SELECT COUNT(*) FROM hc_books WHERE status_id={HC_READ}").fetchone()[0]
+        hc_want    = conn.execute(f"SELECT COUNT(*) FROM hc_books WHERE status_id={HC_WANT_TO_READ}").fetchone()[0]
+        unrated_hc   = conn.execute(f"SELECT COUNT(*) FROM hc_books WHERE status_id={HC_READ} AND (rating IS NULL OR rating=0)").fetchone()[0]
         unrated_recs = conn.execute("SELECT COUNT(*) FROM rec_interactions WHERE profile_id=? AND user_status='read' AND user_rating IS NULL", (profile_id,)).fetchone()[0]
         in_library_pending = conn.execute("""
             SELECT COUNT(*) FROM recommendations r
@@ -836,9 +844,9 @@ def get_unrated_recs(profile_id: int = 1) -> list[sqlite3.Row]:
 
 def get_unrated_hc_books(limit: int = 200) -> list[sqlite3.Row]:
     with db() as conn:
-        return conn.execute("""
+        return conn.execute(f"""
             SELECT * FROM hc_books
-            WHERE status_id = 3 AND (rating IS NULL OR rating = 0)
+            WHERE status_id = {HC_READ} AND (rating IS NULL OR rating = 0)
             ORDER BY title
             LIMIT ?
         """, (limit,)).fetchall()
@@ -855,33 +863,37 @@ def rate_hc_book(book_id: int, rating: int | None):
 
 def get_rec_context(profile_id: int = 1) -> dict:
     with db() as conn:
-        top_rated = conn.execute("""
+        top_rated = conn.execute(f"""
             SELECT title, author, series, rating
-            FROM hc_books WHERE status_id = 3 AND rating >= 4
+            FROM hc_books WHERE status_id = {HC_READ} AND rating >= 4
             ORDER BY rating DESC, title LIMIT 100
         """).fetchall()
 
-        want_to_read = conn.execute("""
-            SELECT title, author FROM hc_books WHERE status_id = 1
+        want_to_read = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_WANT_TO_READ}
             ORDER BY title LIMIT 200
         """).fetchall()
 
-        currently_reading = conn.execute("""
-            SELECT title, author, series FROM hc_books WHERE status_id = 2 ORDER BY title
+        currently_reading = conn.execute(f"""
+            SELECT title, author, series FROM hc_books WHERE status_id = {HC_READING} ORDER BY title
         """).fetchall()
 
-        dnf_books = conn.execute("""
-            SELECT title, author FROM hc_books WHERE status_id = 4 ORDER BY title
+        dnf_books = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_DNF} ORDER BY title
         """).fetchall()
 
-        low_rated = conn.execute("""
+        paused_books = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_PAUSED} ORDER BY title
+        """).fetchall()
+
+        low_rated = conn.execute(f"""
             SELECT title, author, series, rating
-            FROM hc_books WHERE status_id = 3 AND rating > 0 AND rating <= 2
+            FROM hc_books WHERE status_id = {HC_READ} AND rating > 0 AND rating <= 2
             ORDER BY rating ASC, title
         """).fetchall()
 
-        all_read = conn.execute("""
-            SELECT title, author FROM hc_books WHERE status_id = 3 ORDER BY title
+        all_read = conn.execute(f"""
+            SELECT title, author FROM hc_books WHERE status_id = {HC_READ} ORDER BY title
         """).fetchall()
 
         existing_recs = conn.execute(
@@ -911,6 +923,7 @@ def get_rec_context(profile_id: int = 1) -> dict:
         "want_to_read": [dict(r) for r in want_to_read],
         "currently_reading": [dict(r) for r in currently_reading],
         "dnf_books": [dict(r) for r in dnf_books],
+        "paused_books": [dict(r) for r in paused_books],
         "low_rated_books": [dict(r) for r in low_rated],
         "all_read_books": [dict(r) for r in all_read],
         "existing_recs": [dict(r) for r in existing_recs],

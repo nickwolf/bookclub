@@ -80,6 +80,15 @@ def build_prompt(ctx: dict, count: int) -> str:
             f"pay attention to what these have in common):\n{lines}"
         )
 
+    if ctx.get("paused_books"):
+        lines = "\n".join(
+            f"  - {b['title']} by {b.get('author') or 'Unknown'}"
+            for b in ctx["paused_books"]
+        )
+        sections.append(
+            f"Books they started but paused (do not recommend these):\n{lines}"
+        )
+
     if ctx.get("low_rated_books"):
         lines = "\n".join(
             f"  - {b['title']} by {b.get('author') or 'Unknown'} — {b['rating']}★"

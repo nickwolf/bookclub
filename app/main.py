@@ -83,7 +83,10 @@ STATUS_LABELS = {
     "archive":    "Archive",
 }
 
-HC_STATUS = {1: "Want to Read", 2: "Reading", 3: "Read", 4: "DNF"}
+HC_STATUS = {
+    db.HC_WANT_TO_READ: "Want to Read", db.HC_READING: "Reading", db.HC_READ: "Read",
+    db.HC_PAUSED: "Paused", db.HC_DNF: "DNF", db.HC_IGNORED: "Ignored",
+}
 
 
 def get_profile_id(request: Request) -> int:
@@ -255,7 +258,7 @@ def history_page(request: Request, q: str = "", rating: str = "", page: int = 1)
     page = max(1, page)
     offset = (page - 1) * HISTORY_PAGE_SIZE
     with db.db() as conn:
-        where_clauses = ["status_id = 3"]
+        where_clauses = [f"status_id = {db.HC_READ}"]
         params: list = []
         if q:
             where_clauses.append("(lower(title) LIKE ? OR lower(author) LIKE ?)")
